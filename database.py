@@ -36,6 +36,7 @@ def create_tables():
         role_id INTEGER NOT NULL,
         emoji TEXT,
         captain_id INTEGER,
+        captain_role_id INTEGER,
         UNIQUE(guild_id, name)
     )
     ''')
@@ -109,15 +110,15 @@ def create_tables():
     conn.close()
     logger.info("تم إنشاء قواعد البيانات بنجاح")
 
-def add_team(guild_id, name, role_id, emoji, captain_id=None):
+def add_team(guild_id, name, role_id, emoji, captain_id=None, captain_role_id=None):
     """Add a new team to the database"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
         cursor.execute(
-            "INSERT INTO teams (guild_id, name, role_id, emoji, captain_id) VALUES (?, ?, ?, ?, ?)",
-            (guild_id, name, role_id, emoji, captain_id)
+            "INSERT INTO teams (guild_id, name, role_id, emoji, captain_id, captain_role_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (guild_id, name, role_id, emoji, captain_id, captain_role_id)
         )
         team_id = cursor.lastrowid
         conn.commit()
@@ -517,6 +518,22 @@ def get_team_by_captain(guild_id, user_id):
     if team:
         return dict(team)
     return None
+
+def update_captain_role(guild_id, team_id, captain_role_id):
+    """Update the captain role ID for a team"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        "UPDATE teams SET captain_role_id = ? WHERE id = ? AND guild_id = ?",
+        (captain_role_id, team_id, guild_id)
+    )
+    
+    conn.commit()
+    rows_affected = cursor.rowcount
+    conn.close()
+    
+    return rows_affected > 0
 
 def update_player_price(guild_id, user_id, price):
     """Update player price"""

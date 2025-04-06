@@ -550,8 +550,8 @@ class Teams(commands.Cog):
         channel: discord.TextChannel
     ):
         # التحقق من صلاحيات الإدارة
-        if interaction.user.id != ADMIN_USER_ID:
-            await interaction.response.send_message("فقط مالك البوت يمكنه تحديد قناة التقديم.", ephemeral=True)
+        if not interaction.user.guild_permissions.administrator and interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("يجب أن تكون مشرفاً في السيرفر لتعيين قناة التقديم.", ephemeral=True)
             return
             
         # تحديث الإعدادات في قاعدة البيانات
@@ -579,8 +579,8 @@ class Teams(commands.Cog):
         channel: discord.TextChannel
     ):
         # التحقق من صلاحيات الإدارة
-        if interaction.user.id != ADMIN_USER_ID:
-            await interaction.response.send_message("فقط مالك البوت يمكنه تحديد قناة التعاقدات.", ephemeral=True)
+        if not interaction.user.guild_permissions.administrator and interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("يجب أن تكون مشرفاً في السيرفر لتعيين قناة التعاقدات.", ephemeral=True)
             return
             
         # تحديث الإعدادات في قاعدة البيانات
@@ -684,6 +684,9 @@ class Teams(commands.Cog):
             
             conn.commit()
             conn.close()
+            
+            # Update the captain_role_id in the database
+            db.update_captain_role(interaction.guild.id, team["id"], role.id)
             
             # Add captain to team in players table if not already
             if not player or player["team_id"] != team["id"]:
@@ -875,7 +878,15 @@ class Teams(commands.Cog):
         
         # إرسال إشعار إلى قناة التعاقدات المخصصة
         try:
-            notification_channel = self.bot.get_channel(1345407172866998342)  # استخدام رقم القناة المحدد
+            # الحصول على قناة التعاقدات من الإعدادات
+            settings = db.get_guild_settings(interaction.guild.id)
+            contract_channel_id = settings.get("contract_channel_id")
+            
+            # إذا لم تكن قناة التعاقدات محددة، نستخدم القناة الافتراضية
+            if contract_channel_id is None:
+                contract_channel_id = 1345407172866998342
+                
+            notification_channel = self.bot.get_channel(contract_channel_id)
             if notification_channel:
                 # إنشاء إمبد للنشر في قناة الإشعارات
                 coach = interaction.user
@@ -986,7 +997,15 @@ class Teams(commands.Cog):
         
         # إرسال إشعار إلى قناة التعاقدات المخصصة
         try:
-            notification_channel = self.bot.get_channel(1345407172866998342)  # استخدام رقم القناة المحدد
+            # الحصول على قناة التعاقدات من الإعدادات
+            settings = db.get_guild_settings(interaction.guild.id)
+            contract_channel_id = settings.get("contract_channel_id")
+            
+            # إذا لم تكن قناة التعاقدات محددة، نستخدم القناة الافتراضية
+            if contract_channel_id is None:
+                contract_channel_id = 1345407172866998342
+                
+            notification_channel = self.bot.get_channel(contract_channel_id)
             if notification_channel:
                 # إنشاء إمبد للنشر في قناة الإشعارات
                 coach = interaction.user
@@ -1424,6 +1443,120 @@ class Teams(commands.Cog):
             )
             # إلغاء العرض
             db.update_offer_status(offer_id, "cancelled")
+
+    @app_commands.command(name="عرض_اعدادات", description="عرض جميع إعدادات السيرفر الحالية")
+    async def show_settings(self, interaction: discord.Interaction):
+        # التحقق من صلاحيات الإدارة
+        if not interaction.user.guild_permissions.administrator and interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("يجب أن تكون مشرفاً في السيرفر لعرض الإعدادات.", ephemeral=True)
+            return
+            
+        # الحصول على الإعدادات من قاعدة البيانات
+        settings = db.get_guild_settings(interaction.guild.id)
+        
+        # إنشاء رسالة إظهار الإعدادات
+        embed = discord.Embed(
+            title="⚙️ إعدادات السيرفر",
+            description="الإعدادات الحالية للسيرفر",
+            color=EMBED_COLOR
+        )
+        
+        # إضافة الحد الأقصى لعدد اللاعبين في كل فريق
+        embed.add_field(
+            name="🧢 الحد الأقصى للاعبين في كل فريق:",
+            value=f"{settings['roster_cap']} لاعبين",
+            inline=False
+        )
+        
+        # قناة الإشعارات العامة
+        notification_channel = None
+        if settings["notification_channel_id"]:
+            notification_channel = interaction.guild.get_channel(settings["notification_channel_id"])
+        
+        embed.add_field(
+            name="📢 قناة الإشعارات العامة:",
+            value=notification_channel.mention if notification_channel else "غير محددة",
+            inline=False
+        )
+        
+        # قناة طلبات الانضمام
+        application_channel = None
+        if settings["application_channel_id"]:
+            application_channel = interaction.guild.get_channel(settings["application_channel_id"])
+        
+        embed.add_field(
+            name="📝 قناة طلبات الانضمام:",
+            value=application_channel.mention if application_channel else "غير محددة",
+            inline=False
+        )
+        
+        # قناة إشعارات التعاقدات
+        contract_channel = None
+        if settings["contract_channel_id"]:
+            contract_channel = interaction.guild.get_channel(settings["contract_channel_id"])
+        
+        embed.add_field(
+            name="💼 قناة إشعارات التعاقدات:",
+            value=contract_channel.mention if contract_channel else "غير محددة (سيتم استخدام القناة الافتراضية)",
+            inline=False
+        )
+        
+        # عرض معلومات الفرق ورتب الكابتن
+        teams = db.get_all_teams(interaction.guild.id)
+        if teams:
+            teams_info = []
+            for team in teams:
+                captain_role = None
+                team_role = None
+                
+                if team["captain_role_id"]:
+                    captain_role = interaction.guild.get_role(team["captain_role_id"])
+                
+                if team["role_id"]:
+                    team_role = interaction.guild.get_role(team["role_id"])
+                
+                captain_text = ""
+                if team["captain_id"]:
+                    captain = interaction.guild.get_member(team["captain_id"])
+                    if captain:
+                        captain_text = f" (الكابتن: {captain.display_name})"
+                
+                teams_info.append(f"{team['name']}{captain_text}")
+                teams_info.append(f"  رتبة الفريق: {team_role.mention if team_role else 'غير محددة'}")
+                teams_info.append(f"  رتبة الكابتن: {captain_role.mention if captain_role else 'غير محددة'}")
+            
+            if teams_info:
+                embed.add_field(
+                    name="🏆 الفرق ورتب الكابتن:",
+                    value="\n".join(teams_info),
+                    inline=False
+                )
+        
+        await interaction.response.send_message(embed=embed)
+    
+    @commands.command(name="عرض_اعدادات_نص")
+    async def show_settings_cmd(self, ctx):
+        """عرض جميع إعدادات السيرفر الحالية"""
+        # إنشاء تفاعل اصطناعي
+        fake_interaction = type('FakeInteraction', (), {
+            'guild': ctx.guild,
+            'guild_id': ctx.guild.id,
+            'user': ctx.author,
+            'channel': ctx.channel
+        })
+        fake_interaction.user = ctx.author
+        fake_interaction.response = type('FakeResponse', (), {})
+        
+        async def send_message(content=None, embed=None, view=None, ephemeral=False):
+            if content:
+                await ctx.send(content)
+            elif embed:
+                await ctx.send(embed=embed)
+        
+        fake_interaction.response.send_message = send_message
+        
+        # استدعاء الأمر الأصلي
+        await self.show_settings(fake_interaction)
 
 async def setup(bot):
     await bot.add_cog(Teams(bot))

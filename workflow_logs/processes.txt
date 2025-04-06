@@ -1,0 +1,13 @@
+USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+runner       1  0.0  0.0 2373504 42112 ?       Ssl  21:13   0:00 /nix/store/ajb8wllkdrp1l17z5sd64184qc67m4vz-pid1-0.0.1/bin/pid1
+runner      17  0.9  0.2 12108308 185464 ?     Sl   21:17   0:05 pid2 --no-deprecation /pid2/bundles/0.0.1174/server.cjs --json-logs --start-timestamp=1743974246273 --socket-listener-fd=3
+runner      41  0.0  0.0   3852  2560 ?        S    21:17   0:00 nix-editor --return-output
+runner      66  0.2  0.1 962100 94328 ?        Sl   21:17   0:01 node /nix/store/pcaxdkz86gjbgyl5lp9jp7h3gjyilm9k-pyright-extended-2.0.12/lib/langserver.index.js --stdio
+runner      67  0.0  0.0 908360 25564 ?        Sl   21:17   0:00 /nix/store/bz8k1njgmm249fr5krhaq1jsi7jrhx5k-taplo-0.patched/bin/taplo lsp -c /nix/store/2zhz6va20gizdlqmvryab9b7pn6dp0v1-taplo-config.toml stdio
+runner     168  0.0  0.0  35376 24156 pts/0    Ss+  21:17   0:00 /nix/store/wqhkxzzlaswkj3gimqign99sshvllcg6-python-wrapped-0.1.0/bin/python3 /home/runner/workspace/.pythonlibs/bin/gunicorn --bind 0.0.0.0:5000 --reuse-port --reload main:app
+runner     180  0.3  0.0 138412 50780 pts/0    Sl+  21:17   0:01 /nix/store/wqhkxzzlaswkj3gimqign99sshvllcg6-python-wrapped-0.1.0/bin/python3 /home/runner/workspace/.pythonlibs/bin/gunicorn --bind 0.0.0.0:5000 --reuse-port --reload main:app
+runner     202  0.0  0.0   2616  1408 ?        S    21:20   0:00 sh -c /nix/store/pcaxdkz86gjbgyl5lp9jp7h3gjyilm9k-pyright-extended-2.0.12/bin/langserver.index.js --stdio
+runner     203  2.0  0.2 988516 151800 ?       Rl   21:20   0:07 node /nix/store/pcaxdkz86gjbgyl5lp9jp7h3gjyilm9k-pyright-extended-2.0.12/lib/langserver.index.js --stdio
+runner    1168  1.2  0.0 136944 52484 pts/1    Ss+  21:26   0:00 python main.py
+runner    1344  0.0  0.0   7632  3584 pts/2    Ss+  21:26   0:00 bash --rcfile /nix/store/s4lshwgjxfy4lmilpjpg82swj27lb9ql-replit-bashrc/bashrc -c mkdir -p workflow_logs && ps aux > workflow_logs/processes.txt && cat workflow_logs/processes.txt | grep python
+runner    1347  0.0  0.0   8912  3200 pts/2    R+   21:26   0:00 ps aux
