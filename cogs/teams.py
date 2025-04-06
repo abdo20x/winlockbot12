@@ -7,7 +7,7 @@ import sqlite3
 import database as db
 from config import EMBED_COLOR, ERROR_COLOR, SUCCESS_COLOR, ADMIN_USER_ID
 from utils.embeds import create_team_embed
-from utils.helpers import is_admin_or_captain
+from utils.helpers import is_admin_or_captain, is_captain_or_vice_captain
 
 logger = logging.getLogger("blue_lock_bot")
 
@@ -724,11 +724,20 @@ class Teams(commands.Cog):
         player: discord.Member,
         position: str
     ):
-        # Check if user is a team captain
-        team = db.get_team_by_captain(interaction.guild.id, interaction.user.id)
-        if not team and interaction.user.id != ADMIN_USER_ID:
-            await interaction.response.send_message("هذا الأمر مقيد للكابتن فقط.", ephemeral=True)
+        # Check if user is a team captain or vice-captain
+        is_authorized = is_captain_or_vice_captain(interaction, interaction.user.id)
+        if not is_authorized:
+            await interaction.response.send_message("هذا الأمر مقيد للكابتن أو نائب الكابتن فقط.", ephemeral=True)
             return
+        
+        # Get the team (for captains or admin)
+        team = db.get_team_by_captain(interaction.guild.id, interaction.user.id)
+        
+        # If user is vice captain, need to get their team
+        if not team and interaction.user.id != ADMIN_USER_ID:
+            player_data = db.get_player(interaction.guild.id, interaction.user.id)
+            if player_data and player_data["team_id"] is not None and player_data["position"] == "vc":
+                team = db.get_team(interaction.guild.id, team_id=player_data["team_id"])
         
         # If admin is using this command, they need to specify which team
         if interaction.user.id == ADMIN_USER_ID and not team:
@@ -831,15 +840,21 @@ class Teams(commands.Cog):
     @app_commands.command(name="فسخ_تعاقد", description="إنهاء تعاقد لاعب من الفريق")
     @app_commands.describe(player="اللاعب الذي تريد إنهاء تعاقده")
     async def release_player(self, interaction: discord.Interaction, player: discord.Member):
-        # Check if user is a team captain or admin
-        is_captain = is_admin_or_captain(interaction, interaction.user.id)
-        if not is_captain:
-            await interaction.response.send_message("هذا الأمر مقيد للكابتن فقط.", ephemeral=True)
+        # Check if user is a team captain or vice-captain
+        is_authorized = is_captain_or_vice_captain(interaction, interaction.user.id)
+        if not is_authorized:
+            await interaction.response.send_message("هذا الأمر مقيد للكابتن أو نائب الكابتن فقط.", ephemeral=True)
             return
         
-        # Get captain's team
+        # Get the team (for captains or admin)
         team = db.get_team_by_captain(interaction.guild.id, interaction.user.id)
         
+        # If user is vice captain, need to get their team
+        if not team and interaction.user.id != ADMIN_USER_ID:
+            player_data = db.get_player(interaction.guild.id, interaction.user.id)
+            if player_data and player_data["team_id"] is not None and player_data["position"] == "vc":
+                team = db.get_team(interaction.guild.id, team_id=player_data["team_id"])
+                
         # If admin is using the command and is not a captain
         if interaction.user.id == ADMIN_USER_ID and not team:
             # Get player's team

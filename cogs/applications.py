@@ -15,7 +15,7 @@ class Applications(commands.Cog):
         # Store in-progress applications
         self.active_applications = {}
     
-    @app_commands.command(name="تقديم", description="تقديم طلب انضمام إلى أحد الفرق")
+    @app_commands.command(name="تقديم", description="تقديم طلب انضمام واختيار المركز الذي تجيده")
     async def apply(self, interaction: discord.Interaction):
         # Check if user already has an active application
         if interaction.user.id in self.active_applications:
@@ -81,7 +81,7 @@ class Applications(commands.Cog):
             # Ask for position
             position_embed = discord.Embed(
                 title="🎮 المركز المفضل",
-                description="ما هو المركز الذي تفضل اللعب به؟\n\nاكتب رقم المركز:",
+                description="ما هو المركز الذي تعرف أن تلعب فيه بشكل أفضل؟\n\nاكتب رقم المركز:",
                 color=EMBED_COLOR
             )
             
@@ -101,19 +101,86 @@ class Applications(commands.Cog):
                     timeout=300.0  # 5 minutes
                 )
                 
-                # Parse position
+                # Parse position - تحسين لمعالجة إدخال متعدد المراكز
+                position_text = position_response.content.strip()
+                
+                # تحويل الأرقام العربية إلى إنجليزية
+                arabic_to_english = str.maketrans('٠١٢٣٤٥٦٧٨٩', '0123456789')
+                position_text = position_text.translate(arabic_to_english)
+                
+                # تقسيم النص لمعرفة إذا كان يحتوي على مراكز متعددة مفصولة بمسافات
+                position_parts = position_text.lower().split()
+                
+                # في حالة وجود مراكز متعددة، نأخذ الأول فقط
+                user_input = position_parts[0] if position_parts else ""
+                
+                # نفحص أيضًا كامل النص الأصلي للتأكد
+                full_input = position_text.lower()
+                
                 position_map = {
-                    "1": "cf",
-                    "2": "rw",
-                    "3": "lw",
-                    "4": "cm",
-                    "5": "gk",
+                    # أرقام
+                    "1": "cf", "١": "cf", "واحد": "cf",
+                    "2": "rw", "٢": "rw", "اثنين": "rw",
+                    "3": "lw", "٣": "lw", "ثلاثة": "lw",
+                    "4": "cm", "٤": "cm", "أربعة": "cm", "اربعة": "cm",
+                    "5": "gk", "٥": "gk", "خمسة": "gk",
+                    
+                    # مصطلحات عربية
+                    "مهاجم": "cf", "هجوم": "cf",
+                    "جناح أيمن": "rw", "جناح ايمن": "rw", "يمين": "rw",
+                    "جناح أيسر": "lw", "جناح ايسر": "lw", "يسار": "lw",
+                    "وسط": "cm", "لاعب وسط": "cm", "وسط الملعب": "cm",
+                    "حارس": "gk", "حارس مرمى": "gk", "جول كيبر": "gk",
+                    
+                    # اختصارات إنجليزية
+                    "cf": "cf", "striker": "cf", "st": "cf", "9": "cf",
+                    "rw": "rw", "right": "rw", "7": "rw",
+                    "lw": "lw", "left": "lw", "11": "lw",
+                    "cm": "cm", "mid": "cm", "midfielder": "cm", "8": "cm",
+                    "gk": "gk", "goal": "gk", "goalkeeper": "gk", "keeper": "gk",
                 }
                 
-                position = position_map.get(position_response.content.strip())
+                position = None
+                
+                # خطوة 1: تحقق من المدخل المجزأ الأول (الجزء الأول أو الرقم الأول)
+                if user_input in position_map:
+                    position = position_map[user_input]
+                
+                # خطوة 2: إذا لم يتم العثور على تطابق، ابحث في كل جزء من الأجزاء المنفصلة
+                if not position and len(position_parts) > 1:
+                    for part in position_parts:
+                        if part in position_map:
+                            position = position_map[part]
+                            break
+                
+                # خطوة 3: إذا لم يتم العثور على تطابق، ابحث عن أجزاء من الكلمات
+                if not position:
+                    for key in position_map:
+                        # نتحقق من وجود الكلمة المفتاحية في الإدخال الكامل
+                        if key in full_input:
+                            position = position_map[key]
+                            break
+                
+                # خطوة 4: تحقق من وجود أي أرقام في المدخل
+                if not position:
+                    import re
+                    number_match = re.search(r'\d+', position_text)
+                    if number_match:
+                        num = number_match.group(0)
+                        if num in ["1", "١"]:
+                            position = "cf"  # مهاجم
+                        elif num in ["2", "٢"]:
+                            position = "rw"  # جناح أيمن
+                        elif num in ["3", "٣"]:
+                            position = "lw"  # جناح أيسر
+                        elif num in ["4", "٤"]:
+                            position = "cm"  # وسط
+                        elif num in ["5", "٥"]:
+                            position = "gk"  # حارس مرمى
                 
                 if not position:
-                    await interaction.user.send("خيار غير صالح. يرجى استخدام الأرقام من 1 إلى 5. تم إلغاء التقديم.")
+                    # إرسال رسالة أكثر توضيحًا للمستخدم
+                    await interaction.user.send("لم أتمكن من فهم اختيارك للمركز. يرجى استخدام رقم من 1 إلى 5 أو كتابة اسم المركز بشكل واضح (مثل: مهاجم، جناح أيمن، وسط، حارس). حاول مرة أخرى باستخدام أمر /تقديم.")
                     del self.active_applications[interaction.user.id]
                     return
                 
@@ -137,17 +204,49 @@ class Applications(commands.Cog):
                         timeout=300.0
                     )
                     
-                    try:
-                        saves = int(saves_response.content.strip())
+                    # معالجة إدخال التصديات بشكل أكثر مرونة
+                    saves_text = saves_response.content.strip()
+                    
+                    # تحويل الأرقام العربية إلى إنجليزية
+                    arabic_to_english = str.maketrans('٠١٢٣٤٥٦٧٨٩', '0123456789')
+                    saves_text = saves_text.translate(arabic_to_english)
+                    
+                    # استخراج الأرقام من النص
+                    import re
+                    numbers = re.findall(r'\d+', saves_text)
+                    
+                    if numbers:
+                        # استخدام أول رقم تم العثور عليه
+                        saves = int(numbers[0])
                         if saves < 0:
                             saves = 0
                         self.active_applications[interaction.user.id]["saves"] = saves
                         self.active_applications[interaction.user.id]["goals"] = 0
                         self.active_applications[interaction.user.id]["assists"] = 0
-                    except ValueError:
-                        await interaction.user.send("قيمة غير صالحة. يجب أن تكون التصديات رقماً. تم إلغاء التقديم.")
-                        del self.active_applications[interaction.user.id]
-                        return
+                    else:
+                        # محاولة معالجة النص كوصف (مثل "كثير" أو "قليل")
+                        text_lower = saves_text.lower()
+                        
+                        if any(word in text_lower for word in ["كثير", "عديد", "كبير"]):
+                            saves = 50  # قيمة افتراضية عالية
+                        elif any(word in text_lower for word in ["متوسط", "عادي", "وسط"]):
+                            saves = 25  # قيمة متوسطة
+                        elif any(word in text_lower for word in ["قليل", "بسيط", "صغير"]):
+                            saves = 10  # قيمة منخفضة
+                        elif any(word in text_lower for word in ["لا", "صفر", "ما فيه", "مافي"]):
+                            saves = 0  # صفر
+                        else:
+                            # إذا لم نستطع فهم المدخل، نستخدم قيمة افتراضية
+                            saves = 15
+                            
+                        self.active_applications[interaction.user.id]["saves"] = saves
+                        self.active_applications[interaction.user.id]["goals"] = 0
+                        self.active_applications[interaction.user.id]["assists"] = 0
+                        
+                        # لا نرسل إشعارًا منفصلًا هنا لتجنب تأخير تسلسل الأسئلة
+                    
+                    # تأكيد استلام الإدخال - لا نرسل تأكيدًا منفصلًا هنا لتجنب تداخل الرسائل
+                    
                 else:
                     # Ask for goals and assists
                     goals_embed = discord.Embed(
@@ -165,15 +264,44 @@ class Applications(commands.Cog):
                         timeout=300.0
                     )
                     
-                    try:
-                        goals = int(goals_response.content.strip())
+                    # معالجة إدخال الأهداف بشكل أكثر مرونة
+                    goals_text = goals_response.content.strip()
+                    
+                    # تحويل الأرقام العربية إلى إنجليزية
+                    arabic_to_english = str.maketrans('٠١٢٣٤٥٦٧٨٩', '0123456789')
+                    goals_text = goals_text.translate(arabic_to_english)
+                    
+                    # استخراج الأرقام من النص
+                    import re
+                    numbers = re.findall(r'\d+', goals_text)
+                    
+                    if numbers:
+                        # استخدام أول رقم تم العثور عليه
+                        goals = int(numbers[0])
                         if goals < 0:
                             goals = 0
                         self.active_applications[interaction.user.id]["goals"] = goals
-                    except ValueError:
-                        await interaction.user.send("قيمة غير صالحة. يجب أن تكون الأهداف رقماً. تم إلغاء التقديم.")
-                        del self.active_applications[interaction.user.id]
-                        return
+                    else:
+                        # محاولة معالجة النص كوصف
+                        text_lower = goals_text.lower()
+                        
+                        if any(word in text_lower for word in ["كثير", "عديد", "كبير"]):
+                            goals = 40  # قيمة افتراضية عالية
+                        elif any(word in text_lower for word in ["متوسط", "عادي", "وسط"]):
+                            goals = 20  # قيمة متوسطة
+                        elif any(word in text_lower for word in ["قليل", "بسيط", "صغير"]):
+                            goals = 10  # قيمة منخفضة
+                        elif any(word in text_lower for word in ["لا", "صفر", "ما فيه", "مافي"]):
+                            goals = 0  # صفر
+                        else:
+                            # إذا لم نستطع فهم المدخل، نستخدم قيمة افتراضية
+                            goals = 15
+                            
+                        self.active_applications[interaction.user.id]["goals"] = goals
+                        
+                        # لا نرسل إشعارًا منفصلًا هنا لتجنب تأخير تسلسل الأسئلة
+                    
+                    # لا نرسل تأكيدًا منفصلًا هنا لتجنب تداخل الرسائل
                     
                     # Ask for assists
                     assists_embed = discord.Embed(
@@ -191,16 +319,46 @@ class Applications(commands.Cog):
                         timeout=300.0
                     )
                     
-                    try:
-                        assists = int(assists_response.content.strip())
+                    # معالجة إدخال التمريرات الحاسمة بشكل أكثر مرونة
+                    assists_text = assists_response.content.strip()
+                    
+                    # تحويل الأرقام العربية إلى إنجليزية
+                    arabic_to_english = str.maketrans('٠١٢٣٤٥٦٧٨٩', '0123456789')
+                    assists_text = assists_text.translate(arabic_to_english)
+                    
+                    # استخراج الأرقام من النص
+                    import re
+                    numbers = re.findall(r'\d+', assists_text)
+                    
+                    if numbers:
+                        # استخدام أول رقم تم العثور عليه
+                        assists = int(numbers[0])
                         if assists < 0:
                             assists = 0
                         self.active_applications[interaction.user.id]["assists"] = assists
                         self.active_applications[interaction.user.id]["saves"] = 0
-                    except ValueError:
-                        await interaction.user.send("قيمة غير صالحة. يجب أن تكون التمريرات رقماً. تم إلغاء التقديم.")
-                        del self.active_applications[interaction.user.id]
-                        return
+                    else:
+                        # محاولة معالجة النص كوصف
+                        text_lower = assists_text.lower()
+                        
+                        if any(word in text_lower for word in ["كثير", "عديد", "كبير"]):
+                            assists = 30  # قيمة افتراضية عالية
+                        elif any(word in text_lower for word in ["متوسط", "عادي", "وسط"]):
+                            assists = 15  # قيمة متوسطة
+                        elif any(word in text_lower for word in ["قليل", "بسيط", "صغير"]):
+                            assists = 5  # قيمة منخفضة
+                        elif any(word in text_lower for word in ["لا", "صفر", "ما فيه", "مافي"]):
+                            assists = 0  # صفر
+                        else:
+                            # إذا لم نستطع فهم المدخل، نستخدم قيمة افتراضية
+                            assists = 10
+                            
+                        self.active_applications[interaction.user.id]["assists"] = assists
+                        self.active_applications[interaction.user.id]["saves"] = 0
+                        
+                        # لا نرسل إشعارًا منفصلًا هنا لتجنب تأخير تسلسل الأسئلة
+                    
+                    # لا نرسل تأكيدًا منفصلًا هنا لتجنب تداخل الرسائل مع السؤال التالي
                 
                 # Ask for preferred team
                 teams_text = "\n".join([f"{i+1}️⃣ {team['name']}" for i, team in enumerate(teams)])
@@ -226,19 +384,49 @@ class Applications(commands.Cog):
                     timeout=300.0
                 )
                 
+                # معالجة اختيار الفريق بشكل أكثر مرونة
+                user_team_input = team_response.content.strip().lower()
+                preferred_team = None
+                
+                # محاولة تحويل إلى رقم أولاً
                 try:
-                    team_index = int(team_response.content.strip()) - 1
+                    # قبول الأرقام العربية أيضًا
+                    arabic_to_english = str.maketrans('٠١٢٣٤٥٦٧٨٩', '0123456789')
+                    user_team_input = user_team_input.translate(arabic_to_english)
+                    
+                    # تحويل أي شيء يبدو كرقم إلى رقم
+                    # تجاهل أي نص آخر في المدخل مثل "فريق 1" أو "رقم 2"
+                    team_index = -1
+                    for char in user_team_input:
+                        if char.isdigit():
+                            team_index = int(char) - 1
+                            break
+                            
                     if 0 <= team_index < len(teams):
                         preferred_team = teams[team_index]["name"]
-                        self.active_applications[interaction.user.id]["preferred_team"] = preferred_team
-                    else:
-                        await interaction.user.send("رقم فريق غير صالح. تم إلغاء التقديم.")
-                        del self.active_applications[interaction.user.id]
-                        return
+                    
                 except ValueError:
-                    await interaction.user.send("قيمة غير صالحة. يجب أن يكون رقم الفريق رقماً. تم إلغاء التقديم.")
+                    # لا نفعل شيئًا، سننتقل للمحاولة التالية
+                    pass
+                    
+                # إذا لم يتم العثور على مطابقة بالأرقام، نبحث عن اسم الفريق
+                if not preferred_team:
+                    for team in teams:
+                        team_name = team["name"].lower()
+                        # تحقق من وجود اسم الفريق في المدخل
+                        if team_name in user_team_input or user_team_input in team_name:
+                            preferred_team = team["name"]
+                            break
+                
+                # إذا لم نتمكن من العثور على الفريق، نطلب من المستخدم المحاولة مرة أخرى
+                if not preferred_team:
+                    teams_names = ", ".join([team["name"] for team in teams])
+                    await interaction.user.send(f"لم أتمكن من فهم الفريق الذي تريده. يرجى اختيار رقم الفريق من القائمة أو كتابة اسم الفريق بشكل واضح. الفرق المتاحة هي: {teams_names}. تم إلغاء التقديم، يرجى استخدام أمر /تقديم مرة أخرى.")
                     del self.active_applications[interaction.user.id]
                     return
+                    
+                # حفظ الفريق المفضل
+                self.active_applications[interaction.user.id]["preferred_team"] = preferred_team
                 
                 # Save application to database
                 app_data = self.active_applications[interaction.user.id]
