@@ -15,6 +15,174 @@ class Teams(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         
+    # Add regular text commands (not slash commands)
+    @commands.command(name="فريق")
+    async def team_cmd(self, ctx, *, team_name=None):
+        """عرض معلومات فريق محدد"""
+        if not team_name:
+            await ctx.send("يرجى تحديد اسم الفريق. مثال: !فريق باسترز")
+            return
+            
+        # Get team information
+        team = db.get_team(ctx.guild.id, team_name=team_name)
+        
+        if not team:
+            await ctx.send(f"لم يتم العثور على فريق باسم **{team_name}**")
+            return
+            
+        # Create team embed
+        embed = await create_team_embed(self.bot, ctx.guild, team)
+        
+        await ctx.send(embed=embed)
+        
+    @commands.command(name="الفرق")
+    async def teams_cmd(self, ctx):
+        """عرض قائمة الفرق المتاحة في السيرفر"""
+        # Get all teams
+        teams = db.get_all_teams(ctx.guild.id)
+        
+        if not teams:
+            await ctx.send("لا توجد فرق مسجلة في هذا السيرفر.")
+            return
+            
+        # Create embed response
+        embed = discord.Embed(
+            title="🏆 قائمة الفرق",
+            description="جميع الفرق المسجلة في السيرفر",
+            color=EMBED_COLOR
+        )
+        
+        for team in teams:
+            # Get team captain if exists
+            captain_text = "غير معين"
+            if team["captain_id"]:
+                captain = ctx.guild.get_member(team["captain_id"])
+                if captain:
+                    captain_text = captain.mention
+            
+            # Get team role if exists
+            role = ctx.guild.get_role(team["role_id"])
+            role_text = role.mention if role else "غير موجود"
+            
+            # Get player count
+            players = db.get_team_players(ctx.guild.id, team["id"])
+            player_count = len(players)
+            
+            # Add team field
+            team_emoji = team["emoji"] if team["emoji"] else "⚽"
+            embed.add_field(
+                name=f"{team_emoji} {team['name']}",
+                value=f"الكابتن: {captain_text}\nالرتبة: {role_text}\nعدد اللاعبين: {player_count}",
+                inline=False
+            )
+        
+        # Add thumbnail
+        embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
+        embed.set_footer(text="استخدم أمر !فريق متبوعًا باسم الفريق لعرض تفاصيل أكثر")
+        
+        await ctx.send(embed=embed)
+        
+    @commands.command(name="روستر")
+    async def roster_cmd(self, ctx, *, team_name=None):
+        """عرض قائمة لاعبي فريق محدد"""
+        if not team_name:
+            await ctx.send("يرجى تحديد اسم الفريق. مثال: !روستر باسترز")
+            return
+            
+        # Get team information
+        team = db.get_team(ctx.guild.id, team_name=team_name)
+        
+        if not team:
+            await ctx.send(f"لم يتم العثور على فريق باسم **{team_name}**")
+            return
+            
+        # Get team players
+        players = db.get_team_players(ctx.guild.id, team["id"])
+        
+        # Get roster cap
+        settings = db.get_guild_settings(ctx.guild.id)
+        roster_cap = settings["roster_cap"]
+        
+        # Create embed response
+        team_emoji = team["emoji"] if team["emoji"] else "⚽"
+        embed = discord.Embed(
+            title=f"{team_emoji} روستر فريق {team['name']}",
+            description=f"عدد اللاعبين: {len(players)}/{roster_cap}",
+            color=EMBED_COLOR
+        )
+        
+        # Get captain info
+        captain_name = "غير معين"
+        if team["captain_id"]:
+            captain = ctx.guild.get_member(team["captain_id"])
+            if captain:
+                captain_name = captain.display_name
+        
+        embed.add_field(name="🎖️ الكابتن", value=captain_name, inline=False)
+        
+        # Group players by position
+        positions = {
+            "cf": [],
+            "rw": [],
+            "lw": [],
+            "cm": [],
+            "gk": [],
+            "": []
+        }
+        
+        for player_data in players:
+            # Skip captain as they're already listed
+            if player_data["user_id"] == team["captain_id"]:
+                continue
+                
+            player = ctx.guild.get_member(player_data["user_id"])
+            if not player:
+                continue
+                
+            position = player_data["position"] or ""
+            if position not in positions:
+                positions[""] += [player_data]
+            else:
+                positions[position] += [player_data]
+        
+        # Add position fields
+        position_names = {
+            "cf": "⚔️ المهاجمين (CF)",
+            "rw": "🏹 الجناح الأيمن (RW)",
+            "lw": "🏹 الجناح الأيسر (LW)",
+            "cm": "🛡️ لاعبي الوسط (CM)",
+            "gk": "🧤 حراس المرمى (GK)",
+            "": "🔍 غير معين"
+        }
+        
+        for position, players_list in positions.items():
+            if not players_list:
+                continue
+                
+            player_text = ""
+            for player_data in players_list:
+                player = ctx.guild.get_member(player_data["user_id"])
+                if player:
+                    stats = f"⚽ {player_data['goals']} | 👟 {player_data['assists']}"
+                    if position == "gk":
+                        stats = f"🧤 {player_data['saves']}"
+                    player_text += f"{player.mention} - {stats}\n"
+            
+            if player_text:
+                embed.add_field(
+                    name=position_names[position],
+                    value=player_text,
+                    inline=False
+                )
+        
+        if not any(len(p) > 0 for p in positions.values()):
+            embed.add_field(name="📝 ملاحظة", value="لا يوجد لاعبين في هذا الفريق حاليًا", inline=False)
+            
+        # Add thumbnail
+        embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
+        
+        await ctx.send(embed=embed)
+        
     @app_commands.command(name="اضافة_فريق", description="إضافة فريق جديد إلى السيرفر")
     @app_commands.describe(
         name="اسم الفريق",

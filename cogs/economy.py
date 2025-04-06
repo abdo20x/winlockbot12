@@ -12,6 +12,162 @@ logger = logging.getLogger("blue_lock_bot")
 class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        
+    # Add regular text commands (not slash commands)
+    @commands.command(name="يومي")
+    async def daily_cmd(self, ctx):
+        """الحصول على مكافأة يومية"""
+        # Check if user has already claimed today
+        last_claim = db.get_last_daily_claim(ctx.guild.id, ctx.author.id)
+        
+        if last_claim:
+            # Parse the datetime string
+            last_claim_time = datetime.strptime(last_claim, "%Y-%m-%d %H:%M:%S")
+            next_claim_time = last_claim_time + timedelta(seconds=DAILY_COOLDOWN)
+            
+            # Check if cooldown is active
+            if datetime.utcnow() < next_claim_time:
+                time_remaining = next_claim_time - datetime.utcnow()
+                hours, remainder = divmod(time_remaining.seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                
+                embed = discord.Embed(
+                    title="⏳ انتظر قليلاً",
+                    description=f"لقد حصلت على مكافأتك اليومية بالفعل. يمكنك الحصول على المكافأة مرة أخرى بعد {hours} ساعة و {minutes} دقيقة.",
+                    color=ERROR_COLOR
+                )
+                
+                await ctx.send(embed=embed)
+                return
+        
+        # Update balance
+        db.update_player_balance(ctx.guild.id, ctx.author.id, DAILY_REWARD)
+        
+        # Update claim time
+        db.update_daily_reward(ctx.guild.id, ctx.author.id)
+        
+        # Get player balance
+        player = db.get_player(ctx.guild.id, ctx.author.id)
+        current_balance = player["balance"] if player else DAILY_REWARD
+        
+        # Create embed response
+        embed = discord.Embed(
+            title="💰 مكافأة يومية",
+            description=f"تم إضافة {DAILY_REWARD:,} {CURRENCY_NAME} إلى رصيدك!",
+            color=SUCCESS_COLOR
+        )
+        
+        embed.add_field(
+            name="رصيدك الحالي",
+            value=f"{current_balance:,} {CURRENCY_NAME}",
+            inline=False
+        )
+        
+        await ctx.send(embed=embed)
+    
+    @commands.command(name="رصيدي")
+    async def balance_cmd(self, ctx):
+        """عرض رصيدك من العملات"""
+        # Get player balance
+        player = db.get_player(ctx.guild.id, ctx.author.id)
+        
+        if not player:
+            # Create player with 0 balance
+            db.update_player_balance(ctx.guild.id, ctx.author.id, 0)
+            current_balance = 0
+        else:
+            current_balance = player["balance"]
+        
+        # Create embed response
+        embed = discord.Embed(
+            title="💰 رصيدك",
+            description=f"رصيدك الحالي: **{current_balance:,}** {CURRENCY_NAME}",
+            color=EMBED_COLOR
+        )
+        
+        # Get player team if exists
+        team_name = "لا يوجد"
+        team_emoji = ""
+        
+        if player and player["team_id"]:
+            team = db.get_team(ctx.guild.id, team_id=player["team_id"])
+            if team:
+                team_name = team["name"]
+                team_emoji = team["emoji"] if team["emoji"] else ""
+        
+        embed.add_field(
+            name="الفريق",
+            value=f"{team_emoji} {team_name}",
+            inline=True
+        )
+        
+        # Add position if in a team
+        if player and player["position"] and player["team_id"]:
+            position_names = {
+                "cf": "⚔️ مهاجم (CF)",
+                "rw": "🏹 جناح أيمن (RW)",
+                "lw": "🏹 جناح أيسر (LW)",
+                "cm": "🛡️ لاعب وسط (CM)",
+                "gk": "🧤 حارس مرمى (GK)",
+                "cap": "🎖️ كابتن"
+            }
+            
+            position = position_names.get(player["position"], "غير معروف")
+            embed.add_field(name="المركز", value=position, inline=True)
+        
+        # Add thumbnail
+        embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
+        
+        await ctx.send(embed=embed)
+        
+    @commands.command(name="ليدر_بورد")
+    async def leaderboard_cmd(self, ctx):
+        """عرض أفضل 10 لاعبين"""
+        # Get top players
+        top_players = db.get_top_players(ctx.guild.id, 10)
+        
+        if not top_players:
+            await ctx.send("لا يوجد لاعبين مسجلين بعد.")
+            return
+        
+        # Create embed response
+        embed = discord.Embed(
+            title="🏆 قائمة أفضل اللاعبين",
+            description="أفضل 10 لاعبين حسب مجموع الأهداف والتمريرات الحاسمة والتصديات",
+            color=EMBED_COLOR
+        )
+        
+        for i, player_data in enumerate(top_players):
+            player = ctx.guild.get_member(player_data["user_id"])
+            if not player:
+                continue
+            
+            # Calculate total score
+            total_score = player_data["goals"] + player_data["assists"] + player_data["saves"]
+            
+            # Get player team if exists
+            team_text = "بدون فريق"
+            if player_data["team_name"]:
+                team_emoji = player_data["team_emoji"] if player_data["team_emoji"] else ""
+                team_text = f"{team_emoji} {player_data['team_name']}"
+            
+            # Format player stats based on position
+            stats_text = f"⚽ {player_data['goals']} | 👟 {player_data['assists']}"
+            if player_data["position"] == "gk":
+                stats_text = f"🧤 {player_data['saves']}"
+            
+            # Add player field
+            medal = ["🥇", "🥈", "🥉"][i] if i < 3 else f"{i+1}."
+            embed.add_field(
+                name=f"{medal} {player.display_name}",
+                value=f"الفريق: {team_text}\n{stats_text}\nالنقاط: {total_score}",
+                inline=False
+            )
+        
+        # Add thumbnail
+        embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
+        
+        await ctx.send(embed=embed)
     
     @app_commands.command(name="يومي", description=f"الحصول على مكافأة يومية من {CURRENCY_NAME}")
     async def daily(self, interaction: discord.Interaction):
