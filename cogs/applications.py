@@ -468,8 +468,14 @@ class Applications(commands.Cog):
                 
                 # Send application to the specific application channel
                 try:
-                    # Use fixed channel ID as specified (1354950727184683181)
-                    application_channel_id = 1354950727184683181
+                    # Get settings to find the application channel ID
+                    settings = db.get_guild_settings(interaction.guild.id)
+                    application_channel_id = settings.get("application_channel_id")
+                    
+                    # الرجوع إلى القناة المحددة سابقاً إذا لم يتم تعيين قناة في الإعدادات
+                    if application_channel_id is None:
+                        application_channel_id = 1354950727184683181
+                        
                     channel = self.bot.get_channel(application_channel_id)
                     
                     if channel:
@@ -493,7 +499,7 @@ class Applications(commands.Cog):
                         
                         await channel.send(embed=app_embed)
                     else:
-                        logger.error(f"تعذر العثور على قناة التقديمات بالمعرف 1354950727184683181")
+                        logger.error(f"تعذر العثور على قناة التقديمات بالمعرف {application_channel_id}")
                 except Exception as e:
                     logger.error(f"خطأ في إرسال التقديم إلى قناة التقديمات: {e}")
                 

@@ -11,10 +11,13 @@ INITIAL_EXTENSIONS = [
 DATABASE_PATH = "bluelock.db"
 
 # Maximum player number in team (default, can be changed with command)
-DEFAULT_ROSTER_CAP = 11
+DEFAULT_ROSTER_CAP = 22
 
 # Admin user ID (for restricted commands)
 ADMIN_USER_ID = 1225190102469181542
+
+# Notification channel ID for contract announcements
+NOTIFICATION_CHANNEL_ID = 1345407172866998342
 
 # Currency name
 CURRENCY_NAME = "بلو باك"

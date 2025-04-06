@@ -21,7 +21,9 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS settings (
         guild_id INTEGER PRIMARY KEY,
         roster_cap INTEGER DEFAULT 11,
-        notification_channel_id INTEGER DEFAULT NULL
+        notification_channel_id INTEGER DEFAULT NULL,
+        application_channel_id INTEGER DEFAULT NULL,
+        contract_channel_id INTEGER DEFAULT NULL
     )
     ''')
     
@@ -54,6 +56,14 @@ def create_tables():
     )
     ''')
     
+    # تحقق من وجود عمود price في جدول players
+    try:
+        cursor.execute("SELECT price FROM players LIMIT 1")
+    except sqlite3.OperationalError:
+        # إذا لم يكن العمود موجوداً، قم بإضافته
+        logger.info("إضافة عمود price إلى جدول players")
+        cursor.execute("ALTER TABLE players ADD COLUMN price INTEGER DEFAULT 0")
+    
     # Create daily rewards table
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS daily_rewards (
@@ -61,6 +71,21 @@ def create_tables():
         guild_id INTEGER NOT NULL,
         last_claimed TIMESTAMP NOT NULL,
         PRIMARY KEY (user_id, guild_id)
+    )
+    ''')
+    
+    # Create player offers table
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS player_offers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id INTEGER NOT NULL,
+        player_id INTEGER NOT NULL,
+        team_id INTEGER NOT NULL,
+        from_captain_id INTEGER NOT NULL,
+        amount INTEGER NOT NULL,
+        status TEXT DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (team_id) REFERENCES teams (id)
     )
     ''')
     
@@ -417,7 +442,7 @@ def get_guild_settings(guild_id):
     conn.close()
     return dict(settings)
 
-def update_guild_settings(guild_id, roster_cap=None, notification_channel_id=None):
+def update_guild_settings(guild_id, roster_cap=None, notification_channel_id=None, application_channel_id=None, contract_channel_id=None):
     """Update guild settings"""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -432,6 +457,14 @@ def update_guild_settings(guild_id, roster_cap=None, notification_channel_id=Non
     if notification_channel_id is not None:
         updates.append("notification_channel_id = ?")
         params.append(notification_channel_id)
+        
+    if application_channel_id is not None:
+        updates.append("application_channel_id = ?")
+        params.append(application_channel_id)
+        
+    if contract_channel_id is not None:
+        updates.append("contract_channel_id = ?")
+        params.append(contract_channel_id)
     
     if updates:
         query = f"UPDATE settings SET {', '.join(updates)} WHERE guild_id = ?"
@@ -445,8 +478,8 @@ def update_guild_settings(guild_id, roster_cap=None, notification_channel_id=Non
                 roster_cap = 11
             
             cursor.execute(
-                "INSERT INTO settings (guild_id, roster_cap, notification_channel_id) VALUES (?, ?, ?)",
-                (guild_id, roster_cap, notification_channel_id)
+                "INSERT INTO settings (guild_id, roster_cap, notification_channel_id, application_channel_id, contract_channel_id) VALUES (?, ?, ?, ?, ?)",
+                (guild_id, roster_cap, notification_channel_id, application_channel_id, contract_channel_id)
             )
     
     conn.commit()
@@ -513,3 +546,78 @@ def update_player_price(guild_id, user_id, price):
     conn.commit()
     conn.close()
     return True
+
+def create_player_offer(guild_id, player_id, team_id, from_captain_id, amount):
+    """Create a new offer for a player"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            """
+            INSERT INTO player_offers 
+            (guild_id, player_id, team_id, from_captain_id, amount)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (guild_id, player_id, team_id, from_captain_id, amount)
+        )
+        
+        offer_id = cursor.lastrowid
+        conn.commit()
+        return offer_id
+    except Exception as e:
+        logger.error(f"Error creating player offer: {e}")
+        return None
+    finally:
+        conn.close()
+
+def get_player_offers(guild_id, player_id=None, team_id=None, status='pending'):
+    """Get offers for a player or from a team"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    query = "SELECT * FROM player_offers WHERE guild_id = ? AND status = ?"
+    params = [guild_id, status]
+    
+    if player_id:
+        query += " AND player_id = ?"
+        params.append(player_id)
+    
+    if team_id:
+        query += " AND team_id = ?"
+        params.append(team_id)
+    
+    cursor.execute(query, params)
+    offers = cursor.fetchall()
+    conn.close()
+    
+    return [dict(offer) for offer in offers]
+
+def get_offer_by_id(offer_id):
+    """Get an offer by its ID"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM player_offers WHERE id = ?", (offer_id,))
+    offer = cursor.fetchone()
+    conn.close()
+    
+    if offer:
+        return dict(offer)
+    return None
+
+def update_offer_status(offer_id, status):
+    """Update status of an offer (accepted/rejected)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        "UPDATE player_offers SET status = ? WHERE id = ?",
+        (status, offer_id)
+    )
+    
+    conn.commit()
+    rows_affected = cursor.rowcount
+    conn.close()
+    
+    return rows_affected > 0
