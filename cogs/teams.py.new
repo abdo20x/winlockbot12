@@ -1,0 +1,6 @@
+            # Create embed response
+            embed = discord.Embed(
+                title="📋 قائمة الفرق",
+                description=f"عرض عدد الأعضاء بكل فريق",
+                color=EMBED_COLOR
+            )

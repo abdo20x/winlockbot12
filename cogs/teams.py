@@ -100,8 +100,8 @@ class Teams(commands.Cog):
                 
             # Create embed response
             embed = discord.Embed(
-                title="📋 روستر جميع الفرق",
-                description=f"عرض حالة جميع الفرق في السيرفر (الحد الأقصى: {roster_cap} لاعب لكل فريق)",
+                title="📋 قائمة الفرق",
+                description=f"عرض عدد الأعضاء بكل فريق",
                 color=EMBED_COLOR
             )
             
@@ -132,8 +132,8 @@ class Teams(commands.Cog):
                 # Add team field
                 embed.add_field(
                     name=f"{team_emoji} {role_name}",
-                    value=f"الكابتن: {captain_name}\nالرتبة: {role_mention}\nالأعضاء بالرتبة: {role_members_count}\nاللاعبين المسجلين: {player_count}/{roster_cap}",
-                    inline=False
+                    value=f"👥 عدد الأعضاء: **{role_members_count}**",
+                    inline=True
                 )
                 
             # Add thumbnail and footer
@@ -417,7 +417,7 @@ class Teams(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
     
-    @app_commands.command(name="روستر", description="عرض قائمة اللاعبين في جميع الفرق")
+    @app_commands.command(name="روستر", description="عرض قائمة الفرق وعدد الأعضاء لكل فريق")
     @app_commands.describe(team_name="اسم الفريق المحدد (اختياري)")
     async def team_roster(self, interaction: discord.Interaction, team_name: str = None):
         # Get roster cap
@@ -464,8 +464,8 @@ class Teams(commands.Cog):
                 
             # Create embed response
             embed = discord.Embed(
-                title="📋 روستر جميع الفرق",
-                description=f"عرض حالة جميع الفرق في السيرفر (الحد الأقصى: {roster_cap} لاعب لكل فريق)",
+                title="📋 قائمة الفرق",
+                description=f"عرض عدد الأعضاء بكل فريق",
                 color=EMBED_COLOR
             )
             
@@ -510,13 +510,8 @@ class Teams(commands.Cog):
                 # Add team field
                 embed.add_field(
                     name=f"{team_emoji} {role_name}",
-                    value=(f"الكابتن: {captain_name}\n"
-                           f"**إحصائيات الرتب:**\n"
-                           f"🎖️ كابتن: {captain_count} | 🥈 نائب كابتن: {vice_captain_count} | 🎽 لاعب: {normal_player_count}\n"
-                           f"الرتبة: {role_mention}\n"
-                           f"الأعضاء بالرتبة: {role_members_count}\n"
-                           f"اللاعبين المسجلين: {player_count}/{roster_cap}"),
-                    inline=False
+                    value=f"👥 عدد الأعضاء: **{role_members_count}**",
+                    inline=True
                 )
         
         # Add detailed player information only if a specific team is requested
