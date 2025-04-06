@@ -49,6 +49,7 @@ def create_tables():
         assists INTEGER DEFAULT 0,
         saves INTEGER DEFAULT 0,
         balance INTEGER DEFAULT 0,
+        price INTEGER DEFAULT 0,
         FOREIGN KEY (team_id) REFERENCES teams (id)
     )
     ''')
@@ -124,8 +125,8 @@ def remove_team(guild_id, team_id):
     conn.close()
     return rows_affected > 0
 
-def get_team(guild_id, team_id=None, team_name=None):
-    """Get team information by ID or name"""
+def get_team(guild_id, team_id=None, team_name=None, role_id=None):
+    """Get team information by ID, name, or role ID"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -138,6 +139,11 @@ def get_team(guild_id, team_id=None, team_name=None):
         cursor.execute(
             "SELECT * FROM teams WHERE guild_id = ? AND name = ?",
             (guild_id, team_name)
+        )
+    elif role_id:
+        cursor.execute(
+            "SELECT * FROM teams WHERE guild_id = ? AND role_id = ?",
+            (guild_id, role_id)
         )
     else:
         conn.close()
@@ -478,3 +484,32 @@ def get_team_by_captain(guild_id, user_id):
     if team:
         return dict(team)
     return None
+
+def update_player_price(guild_id, user_id, price):
+    """Update player price"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Check if player exists
+    cursor.execute(
+        "SELECT * FROM players WHERE user_id = ? AND guild_id = ?",
+        (user_id, guild_id)
+    )
+    player = cursor.fetchone()
+    
+    if player:
+        # Update existing player
+        cursor.execute(
+            "UPDATE players SET price = ? WHERE user_id = ? AND guild_id = ?",
+            (price, user_id, guild_id)
+        )
+    else:
+        # Create new player with this price
+        cursor.execute(
+            "INSERT INTO players (user_id, guild_id, price) VALUES (?, ?, ?)",
+            (user_id, guild_id, price)
+        )
+    
+    conn.commit()
+    conn.close()
+    return True

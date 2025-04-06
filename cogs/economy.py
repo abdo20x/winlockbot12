@@ -358,6 +358,141 @@ class Economy(commands.Cog):
         embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
         
         await interaction.response.send_message(embed=embed)
+        
+    @app_commands.command(name="سعر_اللاعب", description="عرض سعر لاعب معين")
+    @app_commands.describe(player="اللاعب الذي تريد معرفة سعره")
+    async def player_price(self, interaction: discord.Interaction, player: discord.Member = None):
+        target_player = player or interaction.user
+        
+        # Get player data
+        player_data = db.get_player(interaction.guild.id, target_player.id)
+        
+        if not player_data:
+            await interaction.response.send_message(
+                f"لا توجد معلومات مسجلة عن {target_player.mention}.",
+                ephemeral=True
+            )
+            return
+            
+        # Get player price
+        player_price = player_data.get("price", 0) or 0
+        
+        # Get player team if exists
+        team_name = "بدون فريق"
+        team_emoji = ""
+        
+        if player_data["team_id"]:
+            team = db.get_team(interaction.guild.id, team_id=player_data["team_id"])
+            if team:
+                team_name = team["name"]
+                team_emoji = team["emoji"] if team["emoji"] else ""
+        
+        # Create embed response
+        embed = discord.Embed(
+            title="💲 سعر اللاعب",
+            description=f"معلومات سعر {target_player.mention}",
+            color=EMBED_COLOR
+        )
+        
+        embed.add_field(
+            name="السعر الحالي",
+            value=f"{player_price:,} بلو باك" if player_price > 0 else "غير محدد (مجاني)",
+            inline=False
+        )
+        
+        embed.add_field(name="الفريق", value=f"{team_emoji} {team_name}", inline=True)
+        
+        # Add position if in a team
+        if player_data["position"] and player_data["team_id"]:
+            position_names = {
+                "cf": "⚔️ مهاجم (CF)",
+                "rw": "🏹 جناح أيمن (RW)",
+                "lw": "🏹 جناح أيسر (LW)",
+                "cm": "🛡️ لاعب وسط (CM)",
+                "gk": "🧤 حارس مرمى (GK)",
+                "cap": "🎖️ كابتن"
+            }
+            
+            position = position_names.get(player_data["position"], "غير معروف")
+            embed.add_field(name="المركز", value=position, inline=True)
+        
+        # Add stats
+        embed.add_field(
+            name="الإحصائيات",
+            value=f"⚽ الأهداف: {player_data['goals']}\n👟 التمريرات: {player_data['assists']}\n🧤 التصديات: {player_data['saves']}",
+            inline=False
+        )
+        
+        # Set player avatar as thumbnail
+        embed.set_thumbnail(url=target_player.display_avatar.url)
+        
+        await interaction.response.send_message(embed=embed)
+        
+    @commands.command(name="سعر")
+    async def player_price_cmd(self, ctx, member: discord.Member = None):
+        """عرض سعر لاعب معين"""
+        target_player = member or ctx.author
+        
+        # Get player data
+        player_data = db.get_player(ctx.guild.id, target_player.id)
+        
+        if not player_data:
+            await ctx.send(f"لا توجد معلومات مسجلة عن {target_player.mention}.")
+            return
+            
+        # Get player price
+        player_price = player_data.get("price", 0) or 0
+        
+        # Get player team if exists
+        team_name = "بدون فريق"
+        team_emoji = ""
+        
+        if player_data["team_id"]:
+            team = db.get_team(ctx.guild.id, team_id=player_data["team_id"])
+            if team:
+                team_name = team["name"]
+                team_emoji = team["emoji"] if team["emoji"] else ""
+        
+        # Create embed response
+        embed = discord.Embed(
+            title="💲 سعر اللاعب",
+            description=f"معلومات سعر {target_player.mention}",
+            color=EMBED_COLOR
+        )
+        
+        embed.add_field(
+            name="السعر الحالي",
+            value=f"{player_price:,} بلو باك" if player_price > 0 else "غير محدد (مجاني)",
+            inline=False
+        )
+        
+        embed.add_field(name="الفريق", value=f"{team_emoji} {team_name}", inline=True)
+        
+        # Add position if in a team
+        if player_data["position"] and player_data["team_id"]:
+            position_names = {
+                "cf": "⚔️ مهاجم (CF)",
+                "rw": "🏹 جناح أيمن (RW)",
+                "lw": "🏹 جناح أيسر (LW)",
+                "cm": "🛡️ لاعب وسط (CM)",
+                "gk": "🧤 حارس مرمى (GK)",
+                "cap": "🎖️ كابتن"
+            }
+            
+            position = position_names.get(player_data["position"], "غير معروف")
+            embed.add_field(name="المركز", value=position, inline=True)
+        
+        # Add stats
+        embed.add_field(
+            name="الإحصائيات",
+            value=f"⚽ الأهداف: {player_data['goals']}\n👟 التمريرات: {player_data['assists']}\n🧤 التصديات: {player_data['saves']}",
+            inline=False
+        )
+        
+        # Set player avatar as thumbnail
+        embed.set_thumbnail(url=target_player.display_avatar.url)
+        
+        await ctx.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Economy(bot))
