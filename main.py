@@ -1,13 +1,28 @@
 import os
 import logging
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 from dotenv import load_dotenv
 import asyncio
+import time
+import datetime
+from flask import Flask
+import threading
 
 from database import create_tables
 from config import INITIAL_EXTENSIONS
+
+# إنشاء تطبيق Flask بسيط للحفاظ على نشاط ريبليت
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    uptime = datetime.timedelta(seconds=int(time.time() - start_time))
+    return f'Bot is running! Uptime: {uptime}'
+
+# وقت بدء البوت
+start_time = time.time()
 
 # Set up logging
 logging.basicConfig(
@@ -184,10 +199,49 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
             ephemeral=True
         )
 
+# Function to keep the bot running 24/7 using Flask server
+def run_flask_server():
+    app.run(host='0.0.0.0', port=5000)
+
+async def start_bot():
+    try:
+        # تأخير أطول قبل بدء تشغيل البوت للتعامل مع مشكلة rate limiting
+        logger.info("جاري الانتظار 30 ثانية قبل محاولة الاتصال بـ Discord API...")
+        await asyncio.sleep(30)
+        
+        logger.info("محاولة الاتصال بـ Discord API...")
+        await bot.start(TOKEN)
+    except discord.errors.HTTPException as e:
+        if e.status == 429:  # رمز الخطأ الخاص بتجاوز معدل الطلبات
+            # استخراج وقت الانتظار من رسالة الخطأ أو استخدام قيمة افتراضية أكبر (5 دقائق)
+            retry_after = getattr(e, 'retry_after', 300)
+            logger.warning(f"تم تجاوز معدل الطلبات (429). إعادة المحاولة بعد {retry_after} ثانية")
+            
+            # انتظار مدة أطول قبل إعادة المحاولة
+            await asyncio.sleep(retry_after)
+            logger.info("إعادة محاولة الاتصال بعد الانتظار...")
+            return await start_bot()
+        else:
+            # أخطاء HTTP أخرى
+            logger.error(f"خطأ HTTP: {e.status} - {str(e)}")
+            raise
+    except Exception as e:
+        logger.error(f"حدث خطأ غير متوقع أثناء تشغيل البوت: {str(e)}")
+        # انتظار 60 ثانية قبل إعادة المحاولة في حالة حدوث أي خطأ آخر
+        await asyncio.sleep(60)
+        logger.info("إعادة محاولة الاتصال بعد حدوث خطأ...")
+        return await start_bot()
+
 if __name__ == "__main__":
     if not TOKEN:
         logger.critical("لم يتم العثور على رمز البوت (DISCORD_TOKEN). يرجى التحقق من ملف .env")
         exit(1)
     
-    # Run the bot
-    asyncio.run(bot.start(TOKEN))
+    # Start Flask server in a separate thread to keep the bot alive 24/7
+    flask_thread = threading.Thread(target=run_flask_server)
+    flask_thread.daemon = True  # This ensures the thread will close when the main program exits
+    flask_thread.start()
+    logger.info("بدأ خادم Flask للحفاظ على نشاط البوت 24/7")
+    
+    # Run the bot with retry logic
+    asyncio.run(start_bot())

@@ -120,54 +120,7 @@ class Economy(commands.Cog):
         
         await ctx.send(embed=embed)
         
-    @commands.command(name="ليدر_بورد")
-    async def leaderboard_cmd(self, ctx):
-        """عرض أفضل 10 لاعبين"""
-        # Get top players
-        top_players = db.get_top_players(ctx.guild.id, 10)
-        
-        if not top_players:
-            await ctx.send("لا يوجد لاعبين مسجلين بعد.")
-            return
-        
-        # Create embed response
-        embed = discord.Embed(
-            title="🏆 قائمة أفضل اللاعبين",
-            description="أفضل 10 لاعبين حسب مجموع الأهداف والتمريرات الحاسمة والتصديات",
-            color=EMBED_COLOR
-        )
-        
-        for i, player_data in enumerate(top_players):
-            player = ctx.guild.get_member(player_data["user_id"])
-            if not player:
-                continue
-            
-            # Calculate total score
-            total_score = player_data["goals"] + player_data["assists"] + player_data["saves"]
-            
-            # Get player team if exists
-            team_text = "بدون فريق"
-            if player_data["team_name"]:
-                team_emoji = player_data["team_emoji"] if player_data["team_emoji"] else ""
-                team_text = f"{team_emoji} {player_data['team_name']}"
-            
-            # Format player stats based on position
-            stats_text = f"⚽ {player_data['goals']} | 👟 {player_data['assists']}"
-            if player_data["position"] == "gk":
-                stats_text = f"🧤 {player_data['saves']}"
-            
-            # Add player field
-            medal = ["🥇", "🥈", "🥉"][i] if i < 3 else f"{i+1}."
-            embed.add_field(
-                name=f"{medal} {player.display_name}",
-                value=f"الفريق: {team_text}\n{stats_text}\nالنقاط: {total_score}",
-                inline=False
-            )
-        
-        # Add thumbnail
-        embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
-        
-        await ctx.send(embed=embed)
+    # تم إزالة أمر !ليدر_بورد حسب طلب المستخدم
     
     @app_commands.command(name="يومي", description=f"الحصول على مكافأة يومية من {CURRENCY_NAME}")
     async def daily(self, interaction: discord.Interaction):
@@ -311,53 +264,7 @@ class Economy(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
     
-    @app_commands.command(name="ليدر_بورد", description="عرض أفضل 10 لاعبين")
-    async def leaderboard(self, interaction: discord.Interaction):
-        # Get top players
-        top_players = db.get_top_players(interaction.guild.id, 10)
-        
-        if not top_players:
-            await interaction.response.send_message("لا يوجد لاعبين مسجلين بعد.", ephemeral=True)
-            return
-        
-        # Create embed response
-        embed = discord.Embed(
-            title="🏆 قائمة أفضل اللاعبين",
-            description="أفضل 10 لاعبين حسب مجموع الأهداف والتمريرات الحاسمة والتصديات",
-            color=EMBED_COLOR
-        )
-        
-        for i, player_data in enumerate(top_players):
-            player = interaction.guild.get_member(player_data["user_id"])
-            if not player:
-                continue
-            
-            # Calculate total score
-            total_score = player_data["goals"] + player_data["assists"] + player_data["saves"]
-            
-            # Get player team if exists
-            team_text = "بدون فريق"
-            if player_data["team_name"]:
-                team_emoji = player_data["team_emoji"] if player_data["team_emoji"] else ""
-                team_text = f"{team_emoji} {player_data['team_name']}"
-            
-            # Format player stats based on position
-            stats_text = f"⚽ {player_data['goals']} | 👟 {player_data['assists']}"
-            if player_data["position"] == "gk":
-                stats_text = f"🧤 {player_data['saves']}"
-            
-            # Add player field
-            medal = ["🥇", "🥈", "🥉"][i] if i < 3 else f"{i+1}."
-            embed.add_field(
-                name=f"{medal} {player.display_name}",
-                value=f"الفريق: {team_text}\n{stats_text}\nالنقاط: {total_score}",
-                inline=False
-            )
-        
-        # Add thumbnail
-        embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
-        
-        await interaction.response.send_message(embed=embed)
+    # تم إزالة أمر /ليدر_بورد حسب طلب المستخدم
         
     @app_commands.command(name="سعر_اللاعب", description="عرض سعر لاعب معين")
     @app_commands.describe(player="اللاعب الذي تريد معرفة سعره")

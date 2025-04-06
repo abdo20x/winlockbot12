@@ -493,10 +493,29 @@ class Teams(commands.Cog):
                 players = db.get_team_players(interaction.guild.id, team["id"])
                 player_count = len(players)
                 
+                # Count players by role
+                captain_count = 0
+                vice_captain_count = 0
+                normal_player_count = 0
+                
+                for player_data in players:
+                    position = player_data["position"] or ""
+                    if position == "cap":
+                        captain_count += 1
+                    elif position == "vc":
+                        vice_captain_count += 1
+                    else:
+                        normal_player_count += 1
+                
                 # Add team field
                 embed.add_field(
                     name=f"{team_emoji} {role_name}",
-                    value=f"الكابتن: {captain_name}\nالرتبة: {role_mention}\nالأعضاء بالرتبة: {role_members_count}\nاللاعبين المسجلين: {player_count}/{roster_cap}",
+                    value=(f"الكابتن: {captain_name}\n"
+                           f"**إحصائيات الرتب:**\n"
+                           f"🎖️ كابتن: {captain_count} | 🥈 نائب كابتن: {vice_captain_count} | 🎽 لاعب: {normal_player_count}\n"
+                           f"الرتبة: {role_mention}\n"
+                           f"الأعضاء بالرتبة: {role_members_count}\n"
+                           f"اللاعبين المسجلين: {player_count}/{roster_cap}"),
                     inline=False
                 )
         
@@ -627,20 +646,27 @@ class Teams(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
     
-    @app_commands.command(name="اضافة_رتب", description="إعطاء صلاحيات للكابتن")
+    @app_commands.command(name="اضافة_رتب", description="تعيين كابتن أو نائب كابتن للفريق")
     @app_commands.describe(
         role="رتبة الفريق",
-        captain="الكابتن الجديد (اختياري)"
+        captain="العضو المراد تعيينه",
+        role_type="نوع الرتبة (كابتن/نائب)"
     )
+    @app_commands.choices(role_type=[
+        app_commands.Choice(name="🎖️ كابتن", value="captain"),
+        app_commands.Choice(name="🥈 نائب كابتن", value="vice"),
+        app_commands.Choice(name="🎽 لاعب عادي", value="player")
+    ])
     async def set_captain_role(
         self, 
         interaction: discord.Interaction, 
         role: discord.Role,
-        captain: discord.Member = None
+        captain: discord.Member = None,
+        role_type: str = "captain"
     ):
         # Check if user is the admin (only you can use this command)
         if interaction.user.id != ADMIN_USER_ID:
-            await interaction.response.send_message("فقط مالك البوت يمكنه تعيين الكابتن.", ephemeral=True)
+            await interaction.response.send_message("فقط مالك البوت يمكنه تعيين الكابتن أو نائب الكابتن.", ephemeral=True)
             return
             
         # Get team information based on role
@@ -652,45 +678,122 @@ class Teams(commands.Cog):
             
         team_name = team["name"]
         
-        # Get current captain if exists
-        current_captain = None
-        if team["captain_id"]:
-            current_captain = interaction.guild.get_member(team["captain_id"])
-        
-        # If no new captain is specified, just show current captain
+        # If no new member is specified, just show current captain/vice-captain info
         if not captain:
+            # Get current captain if exists
+            current_captain = None
+            if team["captain_id"]:
+                current_captain = interaction.guild.get_member(team["captain_id"])
+                
+            # Find vice-captain (if any)
+            current_vice = None
+            team_players = db.get_team_players(interaction.guild.id, team["id"])
+            for player_data in team_players:
+                if player_data["position"] == "vc":
+                    current_vice = interaction.guild.get_member(player_data["user_id"])
+                    break
+                
+            # Create info message
+            info_message = f"معلومات فريق **{team_name}**:\n"
             if current_captain:
-                await interaction.response.send_message(f"الكابتن الحالي لفريق **{team_name}** هو {current_captain.mention}", ephemeral=True)
+                info_message += f"الكابتن: {current_captain.mention}\n"
             else:
-                await interaction.response.send_message(f"فريق **{team_name}** ليس لديه كابتن حاليًا", ephemeral=True)
+                info_message += "الكابتن: غير معين\n"
+                
+            if current_vice:
+                info_message += f"نائب الكابتن: {current_vice.mention}"
+            else:
+                info_message += "نائب الكابتن: غير معين"
+                
+            await interaction.response.send_message(info_message, ephemeral=True)
             return
         
-        # Update team captain in database
-        conn = db.get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute(
-            "UPDATE teams SET captain_id = ? WHERE id = ? AND guild_id = ?",
-            (captain.id, team["id"], interaction.guild.id)
-        )
-        
-        conn.commit()
-        conn.close()
-        
-        # Add captain to team in players table if not already
+        # Check if player is already in a team
         player = db.get_player(interaction.guild.id, captain.id)
-        if not player or player["team_id"] != team["id"]:
-            db.add_player_to_team(interaction.guild.id, captain.id, team["id"], "cap")
+        if player and player["team_id"] is not None and player["team_id"] != team["id"]:
+            # Get the player's team name
+            player_team = db.get_team(interaction.guild.id, team_id=player["team_id"])
+            if player_team:
+                await interaction.response.send_message(
+                    f"هذا اللاعب منضم بالفعل إلى فريق **{player_team['name']}**. يجب إنهاء تعاقده أولاً.",
+                    ephemeral=True
+                )
+                return
+                
+        # Process based on role type
+        if role_type == "captain":
+            # Update team captain in database
+            conn = db.get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                "UPDATE teams SET captain_id = ? WHERE id = ? AND guild_id = ?",
+                (captain.id, team["id"], interaction.guild.id)
+            )
+            
+            conn.commit()
+            conn.close()
+            
+            # Add captain to team in players table if not already
+            if not player or player["team_id"] != team["id"]:
+                db.add_player_to_team(interaction.guild.id, captain.id, team["id"], "cap")
+            else:
+                # Update existing player's position to captain
+                conn = db.get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE players SET position = 'cap' WHERE user_id = ? AND guild_id = ?",
+                    (captain.id, interaction.guild.id)
+                )
+                conn.commit()
+                conn.close()
+                
+            title = "✅ تم تعيين الكابتن"
+            description = f"تم تعيين {captain.mention} ككابتن لفريق **{team_name}**"
+        elif role_type == "vice":  # vice-captain
+            # Add player as vice-captain to team
+            if not player or player["team_id"] != team["id"]:
+                db.add_player_to_team(interaction.guild.id, captain.id, team["id"], "vc")
+            else:
+                # Update existing player's position to vice-captain
+                conn = db.get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE players SET position = 'vc' WHERE user_id = ? AND guild_id = ?",
+                    (captain.id, interaction.guild.id)
+                )
+                conn.commit()
+                conn.close()
+                
+            title = "✅ تم تعيين نائب الكابتن"
+            description = f"تم تعيين {captain.mention} كنائب كابتن لفريق **{team_name}**"
+        else:  # normal player
+            # Add player as regular player to team
+            if not player or player["team_id"] != team["id"]:
+                db.add_player_to_team(interaction.guild.id, captain.id, team["id"], "player")
+            else:
+                # Update existing player's position to regular player
+                conn = db.get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE players SET position = 'player' WHERE user_id = ? AND guild_id = ?",
+                    (captain.id, interaction.guild.id)
+                )
+                conn.commit()
+                conn.close()
+                
+            title = "✅ تم تعيين لاعب"
+            description = f"تم تعيين {captain.mention} كلاعب في فريق **{team_name}**"
         
-        # Add team role to new captain
+        # Add team role to the player
         role = interaction.guild.get_role(team["role_id"])
         if role:
             await captain.add_roles(role)
         
         # Create embed response
         embed = discord.Embed(
-            title="✅ تم تعيين الكابتن",
-            description=f"تم تعيين {captain.mention} ككابتن لفريق **{team_name}**",
+            title=title,
+            description=description,
             color=SUCCESS_COLOR
         )
         
@@ -708,21 +811,12 @@ class Teams(commands.Cog):
         
     @app_commands.command(name="تعاقد", description="التعاقد مع لاعب جديد للفريق مقابل مبلغ محدد")
     @app_commands.describe(
-        player="اللاعب الذي تريد التعاقد معه",
-        position="مركز اللاعب"
+        player="اللاعب الذي تريد التعاقد معه"
     )
-    @app_commands.choices(position=[
-        app_commands.Choice(name="مهاجم (CF)", value="cf"),
-        app_commands.Choice(name="جناح أيمن (RW)", value="rw"),
-        app_commands.Choice(name="جناح أيسر (LW)", value="lw"),
-        app_commands.Choice(name="لاعب وسط (CM)", value="cm"),
-        app_commands.Choice(name="حارس مرمى (GK)", value="gk")
-    ])
     async def sign_player(
         self, 
         interaction: discord.Interaction, 
-        player: discord.Member,
-        position: str
+        player: discord.Member
     ):
         # Check if user is a team captain or vice-captain
         is_authorized = is_captain_or_vice_captain(interaction, interaction.user.id)
@@ -796,6 +890,9 @@ class Teams(commands.Cog):
             if player_data:
                 db.update_player_balance(interaction.guild.id, player.id, player_price)
         
+        # استخدام مركز "لاعب" كافتراضي
+        position = "player"
+        
         # Add player to team
         db.add_player_to_team(interaction.guild.id, player.id, team["id"], position)
         
@@ -811,16 +908,6 @@ class Teams(commands.Cog):
             description=f"تم التعاقد مع {player.mention} لفريق **{team['name']}** {team_emoji}",
             color=SUCCESS_COLOR
         )
-        
-        position_names = {
-            "cf": "⚔️ مهاجم (CF)",
-            "rw": "🏹 جناح أيمن (RW)",
-            "lw": "🏹 جناح أيسر (LW)",
-            "cm": "🛡️ لاعب وسط (CM)",
-            "gk": "🧤 حارس مرمى (GK)"
-        }
-        
-        embed.add_field(name="المركز", value=position_names.get(position, "غير معروف"), inline=True)
         
         # Add price field if a transaction occurred
         if player_price > 0 and interaction.user.id != ADMIN_USER_ID:
