@@ -278,33 +278,36 @@ class Applications(commands.Cog):
                 
                 await interaction.user.send(embed=confirm_embed)
                 
-                # Send application to applications channel if set
-                settings = db.get_guild_settings(interaction.guild.id)
-                if settings and settings["notification_channel_id"]:
-                    try:
-                        channel = self.bot.get_channel(settings["notification_channel_id"])
-                        if channel:
-                            app_embed = discord.Embed(
-                                title="📝 طلب انضمام جديد",
-                                description=f"تقديم جديد من {interaction.user.mention}",
-                                color=EMBED_COLOR
-                            )
-                            
-                            app_embed.add_field(name="المركز", value=position_names.get(app_data["position"], "غير معروف"), inline=True)
-                            app_embed.add_field(name="الفريق المفضل", value=app_data["preferred_team"], inline=True)
-                            
-                            if app_data["position"] == "gk":
-                                app_embed.add_field(name="التصديات", value=str(app_data["saves"]), inline=True)
-                            else:
-                                app_embed.add_field(name="الأهداف", value=str(app_data["goals"]), inline=True)
-                                app_embed.add_field(name="التمريرات", value=str(app_data["assists"]), inline=True)
-                            
-                            app_embed.set_thumbnail(url=interaction.user.display_avatar.url)
-                            app_embed.set_footer(text=f"معرف التقديم: {application_id}")
-                            
-                            await channel.send(embed=app_embed)
-                    except Exception as e:
-                        logger.error(f"خطأ في إرسال التقديم إلى قناة الإشعارات: {e}")
+                # Send application to the specific application channel
+                try:
+                    # Use fixed channel ID as specified (1354950727184683181)
+                    application_channel_id = 1354950727184683181
+                    channel = self.bot.get_channel(application_channel_id)
+                    
+                    if channel:
+                        app_embed = discord.Embed(
+                            title="📝 طلب انضمام جديد",
+                            description=f"تقديم جديد من {interaction.user.mention}",
+                            color=EMBED_COLOR
+                        )
+                        
+                        app_embed.add_field(name="المركز", value=position_names.get(app_data["position"], "غير معروف"), inline=True)
+                        app_embed.add_field(name="الفريق المفضل", value=app_data["preferred_team"], inline=True)
+                        
+                        if app_data["position"] == "gk":
+                            app_embed.add_field(name="التصديات", value=str(app_data["saves"]), inline=True)
+                        else:
+                            app_embed.add_field(name="الأهداف", value=str(app_data["goals"]), inline=True)
+                            app_embed.add_field(name="التمريرات", value=str(app_data["assists"]), inline=True)
+                        
+                        app_embed.set_thumbnail(url=interaction.user.display_avatar.url)
+                        app_embed.set_footer(text=f"معرف التقديم: {application_id}")
+                        
+                        await channel.send(embed=app_embed)
+                    else:
+                        logger.error(f"تعذر العثور على قناة التقديمات بالمعرف 1354950727184683181")
+                except Exception as e:
+                    logger.error(f"خطأ في إرسال التقديم إلى قناة التقديمات: {e}")
                 
             except asyncio.TimeoutError:
                 await interaction.user.send("انتهت مهلة التقديم. يرجى إعادة استخدام الأمر /تقديم للمحاولة مرة أخرى.")

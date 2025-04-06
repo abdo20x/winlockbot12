@@ -84,12 +84,66 @@ class Teams(commands.Cog):
         
     @commands.command(name="روستر")
     async def roster_cmd(self, ctx, *, team_name=None):
-        """عرض قائمة لاعبي فريق محدد"""
+        """عرض قائمة لاعبي فريق محدد أو جميع الفرق"""
+        # Get roster cap
+        settings = db.get_guild_settings(ctx.guild.id)
+        roster_cap = settings["roster_cap"]
+        
+        # If no team name specified, show all teams
         if not team_name:
-            await ctx.send("يرجى تحديد اسم الفريق. مثال: !روستر باسترز")
-            return
+            # Get all teams
+            teams = db.get_all_teams(ctx.guild.id)
             
-        # Get team information
+            if not teams:
+                await ctx.send("لا توجد فرق مسجلة في هذا السيرفر.")
+                return
+                
+            # Create embed response
+            embed = discord.Embed(
+                title="📋 روستر جميع الفرق",
+                description=f"عرض حالة جميع الفرق في السيرفر (الحد الأقصى: {roster_cap} لاعب لكل فريق)",
+                color=EMBED_COLOR
+            )
+            
+            # Iterate through teams
+            for team in teams:
+                # Get team role
+                role = ctx.guild.get_role(team["role_id"])
+                role_name = role.name if role else team["name"]
+                role_mention = role.mention if role else team["name"]
+                
+                # Count members with this role
+                role_members_count = len(role.members) if role else 0
+                
+                # Get captain info
+                captain_name = "غير معين"
+                if team["captain_id"]:
+                    captain = ctx.guild.get_member(team["captain_id"])
+                    if captain:
+                        captain_name = captain.mention
+                
+                # Get team emoji
+                team_emoji = team["emoji"] if team["emoji"] else "⚽"
+                
+                # Get registered players count 
+                players = db.get_team_players(ctx.guild.id, team["id"])
+                player_count = len(players)
+                
+                # Add team field
+                embed.add_field(
+                    name=f"{team_emoji} {role_name}",
+                    value=f"الكابتن: {captain_name}\nالرتبة: {role_mention}\nالأعضاء بالرتبة: {role_members_count}\nاللاعبين المسجلين: {player_count}/{roster_cap}",
+                    inline=False
+                )
+                
+            # Add thumbnail and footer
+            embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
+            embed.set_footer(text="استخدم أمر !روستر متبوعًا باسم الفريق لعرض تفاصيل الفريق المحدد")
+            
+            await ctx.send(embed=embed)
+            return
+        
+        # If team name specified, show that team's roster
         team = db.get_team(ctx.guild.id, team_name=team_name)
         
         if not team:
@@ -186,20 +240,17 @@ class Teams(commands.Cog):
     @app_commands.command(name="اضافة_فريق", description="إضافة فريق جديد إلى السيرفر باستخدام رتبة موجودة")
     @app_commands.describe(
         role="رتبة الفريق",
-        captain="كابتن الفريق (اختياري)",
         emoji="إيموجي الفريق (اختياري)"
     )
-    @app_commands.default_permissions(administrator=True)
     async def add_team(
         self, 
         interaction: discord.Interaction, 
         role: discord.Role,
-        captain: discord.Member = None,
         emoji: str = None
     ):
-        # Check if user has admin permissions
-        if not interaction.user.guild_permissions.administrator and interaction.user.id != ADMIN_USER_ID:
-            await interaction.response.send_message("ليس لديك صلاحيات لإضافة فريق جديد.", ephemeral=True)
+        # Check if user is the admin (only you can use this command)
+        if interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("فقط مالك البوت يمكنه إضافة فرق جديدة.", ephemeral=True)
             return
         
         try:
@@ -218,21 +269,12 @@ class Teams(commands.Cog):
                 await interaction.response.send_message(f"هذه الرتبة مستخدمة بالفعل لفريق: **{existing_role_team['name']}**", ephemeral=True)
                 return
             
-            # Add captain to role if specified
-            if captain:
-                await captain.add_roles(role)
-            
-            # Add team to database
-            captain_id = captain.id if captain else None
-            team_id = db.add_team(interaction.guild.id, name, role.id, emoji, captain_id)
+            # Add team to database with no captain (None)
+            team_id = db.add_team(interaction.guild.id, name, role.id, emoji, None)
             
             if team_id is None:
                 await interaction.response.send_message(f"فشل إنشاء الفريق: حدث خطأ في قاعدة البيانات.", ephemeral=True)
                 return
-                
-            # Add captain to the team in the database if specified
-            if captain:
-                db.add_player_to_team(interaction.guild.id, captain.id, team_id, "cap")
                 
             # Create embed response
             embed = discord.Embed(
@@ -243,9 +285,6 @@ class Teams(commands.Cog):
             
             if emoji:
                 embed.description += f" {emoji}"
-            
-            if captain:
-                embed.add_field(name="الكابتن", value=captain.mention, inline=False)
                 
             embed.add_field(name="الرتبة", value=role.mention, inline=False)
             
@@ -270,20 +309,21 @@ class Teams(commands.Cog):
             await interaction.response.send_message(f"حدث خطأ أثناء إنشاء الفريق: {e}", ephemeral=True)
         
     @app_commands.command(name="ازالة_فريق", description="إزالة فريق من السيرفر")
-    @app_commands.describe(team_name="اسم الفريق الذي تريد إزالته")
-    @app_commands.default_permissions(administrator=True)
-    async def remove_team(self, interaction: discord.Interaction, team_name: str):
-        # Check if user has admin permissions
-        if not interaction.user.guild_permissions.administrator and interaction.user.id != ADMIN_USER_ID:
-            await interaction.response.send_message("ليس لديك صلاحيات لإزالة فريق.", ephemeral=True)
+    @app_commands.describe(role="رتبة الفريق الذي تريد إزالته")
+    async def remove_team(self, interaction: discord.Interaction, role: discord.Role):
+        # Check if user is the admin (only you can use this command)
+        if interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("فقط مالك البوت يمكنه إزالة الفرق.", ephemeral=True)
             return
             
-        # Get team information
-        team = db.get_team(interaction.guild.id, team_name=team_name)
+        # Get team information based on role
+        team = db.get_team(interaction.guild.id, role_id=role.id)
         
         if not team:
-            await interaction.response.send_message(f"لم يتم العثور على فريق باسم **{team_name}**", ephemeral=True)
+            await interaction.response.send_message(f"لم يتم العثور على فريق بالرتبة {role.mention}", ephemeral=True)
             return
+            
+        team_name = team["name"]
             
         # Remove team from database
         if db.remove_team(interaction.guild.id, team["id"]):
@@ -460,67 +500,75 @@ class Teams(commands.Cog):
                     inline=False
                 )
         
-        # Group players by position
-        positions = {
-            "cf": [],
-            "rw": [],
-            "lw": [],
-            "cm": [],
-            "gk": [],
-            "": []
-        }
-        
-        for player_data in players:
-            # Skip captain as they're already listed
-            if player_data["user_id"] == team["captain_id"]:
-                continue
-                
-            player = interaction.guild.get_member(player_data["user_id"])
-            if not player:
-                continue
-                
-            position = player_data["position"] or ""
-            if position not in positions:
-                positions[""] += [player_data]
-            else:
-                positions[position] += [player_data]
-        
-        # Add position fields
-        position_names = {
-            "cf": "⚔️ المهاجمين (CF)",
-            "rw": "🏹 الجناح الأيمن (RW)",
-            "lw": "🏹 الجناح الأيسر (LW)",
-            "cm": "🛡️ لاعبي الوسط (CM)",
-            "gk": "🧤 حراس المرمى (GK)",
-            "": "🔍 غير معين"
-        }
-        
-        for position, players_list in positions.items():
-            if not players_list:
-                continue
-                
-            player_text = ""
-            for player_data in players_list:
-                player = interaction.guild.get_member(player_data["user_id"])
-                if player:
-                    stats = f"⚽ {player_data['goals']} | 👟 {player_data['assists']}"
-                    if position == "gk":
-                        stats = f"🧤 {player_data['saves']}"
-                    player_text += f"{player.mention} - {stats}\n"
+        # Add detailed player information only if a specific team is requested
+        if team_name:
+            # Group players by position
+            positions = {
+                "cf": [],
+                "rw": [],
+                "lw": [],
+                "cm": [],
+                "gk": [],
+                "": []
+            }
             
-            if player_text:
-                embed.add_field(
-                    name=position_names[position],
-                    value=player_text,
-                    inline=False
-                )
-        
-        if not any(len(p) > 0 for p in positions.values()):
-            embed.add_field(name="📝 ملاحظة", value="لا يوجد لاعبين في هذا الفريق حاليًا", inline=False)
+            for player_data in players:
+                # Skip captain as they're already listed
+                if player_data["user_id"] == team["captain_id"]:
+                    continue
+                    
+                player = interaction.guild.get_member(player_data["user_id"])
+                if not player:
+                    continue
+                    
+                position = player_data["position"] or ""
+                if position not in positions:
+                    positions[""] += [player_data]
+                else:
+                    positions[position] += [player_data]
+            
+            # Add position fields
+            position_names = {
+                "cf": "⚔️ المهاجمين (CF)",
+                "rw": "🏹 الجناح الأيمن (RW)",
+                "lw": "🏹 الجناح الأيسر (LW)",
+                "cm": "🛡️ لاعبي الوسط (CM)",
+                "gk": "🧤 حراس المرمى (GK)",
+                "": "🔍 غير معين"
+            }
+            
+            for position, players_list in positions.items():
+                if not players_list:
+                    continue
+                    
+                player_text = ""
+                for player_data in players_list:
+                    player = interaction.guild.get_member(player_data["user_id"])
+                    if player:
+                        stats = f"⚽ {player_data['goals']} | 👟 {player_data['assists']}"
+                        if position == "gk":
+                            stats = f"🧤 {player_data['saves']}"
+                        player_text += f"{player.mention} - {stats}\n"
+                
+                if player_text:
+                    embed.add_field(
+                        name=position_names[position],
+                        value=player_text,
+                        inline=False
+                    )
+            
+            if not any(len(p) > 0 for p in positions.values()):
+                embed.add_field(name="📝 ملاحظة", value="لا يوجد لاعبين في هذا الفريق حاليًا", inline=False)
             
         # Add thumbnail
         embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
         
+        # Add footer with help text
+        if team_name:
+            embed.set_footer(text="استخدم أمر /روستر بدون اسم فريق لعرض جميع الفرق")
+        else:
+            embed.set_footer(text="استخدم أمر /روستر متبوعًا باسم الفريق لعرض تفاصيل الفريق المحدد")
+            
         await interaction.response.send_message(embed=embed)
     
     @app_commands.command(name="اعدادات", description="ضبط إعدادات السيرفر")
@@ -528,16 +576,15 @@ class Teams(commands.Cog):
         roster_cap="الحد الأقصى لعدد اللاعبين في الفريق",
         notification_channel="قناة إرسال إشعارات التعاقدات"
     )
-    @app_commands.default_permissions(administrator=True)
     async def settings(
         self, 
         interaction: discord.Interaction, 
         roster_cap: int = None,
         notification_channel: discord.TextChannel = None
     ):
-        # Check if user has admin permissions
-        if not interaction.user.guild_permissions.administrator and interaction.user.id != ADMIN_USER_ID:
-            await interaction.response.send_message("ليس لديك صلاحيات لضبط الإعدادات.", ephemeral=True)
+        # Check if user is the admin (only you can use this command)
+        if interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("فقط مالك البوت يمكنه ضبط الإعدادات.", ephemeral=True)
             return
         
         # Get current settings
@@ -582,27 +629,28 @@ class Teams(commands.Cog):
     
     @app_commands.command(name="اضافة_رتب", description="إعطاء صلاحيات للكابتن")
     @app_commands.describe(
-        team_name="اسم الفريق",
+        role="رتبة الفريق",
         captain="الكابتن الجديد (اختياري)"
     )
-    @app_commands.default_permissions(administrator=True)
     async def set_captain_role(
         self, 
         interaction: discord.Interaction, 
-        team_name: str,
+        role: discord.Role,
         captain: discord.Member = None
     ):
-        # Check if user has admin permissions
-        if not interaction.user.guild_permissions.administrator and interaction.user.id != ADMIN_USER_ID:
-            await interaction.response.send_message("ليس لديك صلاحيات لإعطاء صلاحيات الكابتن.", ephemeral=True)
+        # Check if user is the admin (only you can use this command)
+        if interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("فقط مالك البوت يمكنه تعيين الكابتن.", ephemeral=True)
             return
             
-        # Get team information
-        team = db.get_team(interaction.guild.id, team_name=team_name)
+        # Get team information based on role
+        team = db.get_team(interaction.guild.id, role_id=role.id)
         
         if not team:
-            await interaction.response.send_message(f"لم يتم العثور على فريق باسم **{team_name}**", ephemeral=True)
+            await interaction.response.send_message(f"لم يتم العثور على فريق بالرتبة {role.mention}", ephemeral=True)
             return
+            
+        team_name = team["name"]
         
         # Get current captain if exists
         current_captain = None
