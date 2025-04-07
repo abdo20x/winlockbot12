@@ -20,7 +20,7 @@ def create_tables():
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS settings (
         guild_id INTEGER PRIMARY KEY,
-        roster_cap INTEGER DEFAULT 11,
+        roster_cap INTEGER DEFAULT 22,
         notification_channel_id INTEGER DEFAULT NULL,
         application_channel_id INTEGER DEFAULT NULL,
         contract_channel_id INTEGER DEFAULT NULL
@@ -433,7 +433,7 @@ def get_guild_settings(guild_id):
         # Create default settings
         cursor.execute(
             "INSERT INTO settings (guild_id, roster_cap) VALUES (?, ?)",
-            (guild_id, 11)
+            (guild_id, 22)
         )
         conn.commit()
         
@@ -476,7 +476,7 @@ def update_guild_settings(guild_id, roster_cap=None, notification_channel_id=Non
         if cursor.rowcount == 0:
             # Settings don't exist yet, create them
             if roster_cap is None:
-                roster_cap = 11
+                roster_cap = 22
             
             cursor.execute(
                 "INSERT INTO settings (guild_id, roster_cap, notification_channel_id, application_channel_id, contract_channel_id) VALUES (?, ?, ?, ?, ?)",
