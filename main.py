@@ -95,6 +95,21 @@ class BlueLocKBot(commands.Bot):
                 logger.info(f"تم تحميل الملحق {extension}")
             except Exception as e:
                 logger.error(f"فشل في تحميل الملحق {extension}: {e}")
+                
+        # تهيئة المؤثرات المتحركة وربطها بفئة الفرق
+        try:
+            # الحصول على فئة الفرق وفئة المؤثرات
+            teams_cog = self.get_cog("Teams")
+            animations_cog = self.get_cog("Animations")
+            
+            # ربط المؤثرات المتحركة بفئة الفرق
+            if teams_cog and animations_cog:
+                if teams_cog.initialize_animator(animations_cog):
+                    logger.info("تم تهيئة المؤثرات المتحركة بنجاح")
+                else:
+                    logger.warning("فشل في تهيئة المؤثرات المتحركة")
+        except Exception as e:
+            logger.error(f"خطأ أثناء تهيئة المؤثرات المتحركة: {e}")
     
     async def on_ready(self):
         if not self.synced:
@@ -201,7 +216,22 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 
 # Function to keep the bot running 24/7 using Flask server
 def run_flask_server():
-    app.run(host='0.0.0.0', port=5000)
+    import socket
+    
+    def is_port_in_use(port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            return s.connect_ex(('0.0.0.0', port)) == 0
+            
+    # Try to find an available port starting from 5001
+    port = 5001
+    if is_port_in_use(5000):
+        while is_port_in_use(port) and port < 6000:
+            port += 1
+        logger.info(f"Port 5000 is in use. Using port {port} instead.")
+    else:
+        port = 5000
+        
+    app.run(host='0.0.0.0', port=port)
 
 async def start_bot():
     try:

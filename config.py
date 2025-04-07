@@ -4,7 +4,8 @@ INITIAL_EXTENSIONS = [
     "cogs.economy",
     "cogs.admin",
     "cogs.applications",
-    "cogs.player_stats"
+    "cogs.player_stats",
+    "cogs.animations"
 ]
 
 # Database file path

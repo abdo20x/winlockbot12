@@ -120,14 +120,7 @@ class Admin(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
     
-    @app_commands.command(name="اضافة_اسعار", description="تحديد سعر لاعب للتعاقدات")
-    @app_commands.describe(
-        player="اللاعب الذي تريد تحديد سعره",
-        price="السعر بعملات بلو باك"
-    )
-    async def set_player_price_old(self, interaction: discord.Interaction, player: discord.Member, price: int):
-        """نسخة احتياطية من أمر تحديد سعر اللاعب"""
-        await self.set_player_price(interaction, player, price)
+# تم حذف أمر "اضافة_اسعار" والإبقاء فقط على "تحديد_سعر"
     
     @app_commands.command(name="تحديد_سعر", description="تحديد سعر لاعب للتعاقدات")
     @app_commands.describe(

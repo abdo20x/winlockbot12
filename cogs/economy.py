@@ -124,6 +124,12 @@ class Economy(commands.Cog):
     
     @app_commands.command(name="يومي", description=f"الحصول على مكافأة يومية من {CURRENCY_NAME}")
     async def daily(self, interaction: discord.Interaction):
+        # التحقق من أن المستخدم مسجل في أحد الفرق
+        player_data = db.get_player(interaction.guild.id, interaction.user.id)
+        if not player_data or not player_data.get("team_id"):
+            await interaction.response.send_message("يجب أن تكون مسجلاً في أحد الفرق لاستخدام هذا الأمر.", ephemeral=True)
+            return
+        
         # Check if user has already claimed today
         last_claim = db.get_last_daily_claim(interaction.guild.id, interaction.user.id)
         

@@ -11,14 +11,28 @@ from utils.helpers import is_admin_or_captain, is_captain_or_vice_captain
 
 logger = logging.getLogger("blue_lock_bot")
 
+def get_role_member_count(guild, role_id):
+    """الحصول على عدد الأعضاء الذين يملكون رتبة معينة"""
+    role = guild.get_role(role_id)
+    if role:
+        return len(role.members)
+    return 0
+
 class Teams(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.animator = None  # سيتم تهيئة هذا المتغير عند ربط الفرق بالمؤثرات
         
     # Add regular text commands (not slash commands)
     @commands.command(name="عرض")
     async def offer_cmd(self, ctx, player: discord.Member, amount: int):
         """تقديم عرض للتعاقد مع لاعب"""
+        # التحقق من وجود قناة للتعاقدات
+        settings = db.get_guild_settings(ctx.guild.id)
+        if not settings.get("contract_channel_id"):
+            await ctx.send("لم يتم تعيين قناة للتعاقدات. يرجى استخدام أمر /اضافة_روم_الانتقالات أولاً.")
+            return
+            
         # إنشاء تفاعل اصطناعي
         fake_interaction = type('FakeInteraction', (), {
             'guild': ctx.guild,
@@ -115,11 +129,15 @@ class Teams(commands.Cog):
         settings = db.get_guild_settings(ctx.guild.id)
         roster_cap = settings["roster_cap"]
         
+        # Count players by role assignment
+        role = ctx.guild.get_role(team["role_id"])
+        role_members_count = len(role.members) if role else 0
+        
         # Create embed response
         team_emoji = team["emoji"] if team["emoji"] else "⚽"
         embed = discord.Embed(
             title=f"{team_emoji} روستر فريق {team['name']}",
-            description=f"عدد اللاعبين: {len(players)}/{roster_cap}",
+            description=f"عدد اللاعبين: {role_members_count}/{roster_cap}",
             color=EMBED_COLOR
         )
         
@@ -316,172 +334,143 @@ class Teams(commands.Cog):
             
     # تم حذف أوامر /فريق و /الفرق حسب طلب المستخدم
     
+    @app_commands.command(name="عرض_شعار", description="عرض شعار الفريق بتأثير متحرك")
+    @app_commands.describe(
+        team_name="اسم الفريق المراد عرض شعاره",
+        logo_url="رابط شعار الفريق (اختياري، سيتم استخدام الشعار الافتراضي في حال عدم توفره)"
+    )
+    async def show_team_logo(
+        self, 
+        interaction: discord.Interaction, 
+        team_name: str,
+        logo_url: str = None
+    ):
+        # التحقق من أن مستخدم البوت هو مالك البوت أو كابتن الفريق
+        if interaction.user.id != ADMIN_USER_ID and not is_captain_or_vice_captain(interaction, interaction.user.id):
+            await interaction.response.send_message("هذا الأمر متاح فقط للمشرفين وقادة الفرق.", ephemeral=True)
+            return
+            
+        # نبحث عن الفريق في قاعدة البيانات
+        team = db.get_team(interaction.guild.id, team_name=team_name)
+        
+        if not team:
+            await interaction.response.send_message(f"لم يتم العثور على فريق باسم **{team_name}**", ephemeral=True)
+            return
+            
+        # إذا لم يتم توفير رابط للشعار، نستخدم الشعار الافتراضي
+        if not logo_url:
+            logo_url = "https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+            
+        # الحصول على معلومات الفريق
+        team_emoji = team["emoji"] if team["emoji"] else "⚽"
+        
+        # الحصول على عدد اللاعبين
+        players = db.get_team_players(interaction.guild.id, team["id"])
+        player_count = len(players)
+        
+        # الحصول على معلومات الكابتن
+        captain_info = "غير معين"
+        if team["captain_id"]:
+            captain = interaction.guild.get_member(team["captain_id"])
+            if captain:
+                captain_info = f"{captain.mention} • {captain.display_name}"
+        
+        # إنشاء حقول للعرض
+        fields = [
+            {'name': '👑 الكابتن', 'value': captain_info, 'inline': False},
+            {'name': '👥 عدد اللاعبين', 'value': f"{player_count} لاعب", 'inline': True}
+        ]
+        
+        # رسالة الانتظار
+        await interaction.response.send_message("جاري تحميل شعار الفريق، انتظر قليلاً...")
+        
+        # التحقق من وجود فئة المؤثرات
+        if self.animator:
+            # عرض شعار الفريق بتأثير متحرك
+            await self.animator.animate_logo_reveal(
+                channel=interaction.channel,
+                team_name=team_name,
+                logo_url=logo_url,
+                emoji=team_emoji,
+                description=f"شعار فريق {team_name}",
+                fields=fields
+            )
+        else:
+            # إذا لم يتم تحميل فئة المؤثرات، نعرض الشعار بطريقة عادية
+            embed = discord.Embed(
+                title=f"{team_emoji} {team_name}",
+                description=f"شعار فريق {team_name}",
+                color=EMBED_COLOR
+            )
+            embed.set_image(url=logo_url)
+            
+            # إضافة الحقول
+            for field in fields:
+                embed.add_field(
+                    name=field['name'],
+                    value=field['value'],
+                    inline=field.get('inline', True)
+                )
+                
+            await interaction.channel.send(embed=embed)
+    
     @app_commands.command(name="روستر", description="عرض قائمة الفرق وعدد الأعضاء لكل فريق")
-    @app_commands.describe(team_name="اسم الفريق المحدد (اختياري)")
-    async def team_roster(self, interaction: discord.Interaction, team_name: str = None):
+    async def team_roster(self, interaction: discord.Interaction):
         # Get roster cap
         settings = db.get_guild_settings(interaction.guild.id)
         roster_cap = settings["roster_cap"]
         
-        # If a specific team is requested
-        if team_name:
-            # Get team information
-            team = db.get_team(interaction.guild.id, team_name=team_name)
+        # Get all teams
+        teams = db.get_all_teams(interaction.guild.id)
+        
+        if not teams:
+            await interaction.response.send_message("لا توجد فرق مسجلة في هذا السيرفر.", ephemeral=True)
+            return
             
-            if not team:
-                await interaction.response.send_message(f"لم يتم العثور على فريق باسم **{team_name}**", ephemeral=True)
-                return
-                
-            # Get team players
-            players = db.get_team_players(interaction.guild.id, team["id"])
+        # Create embed response
+        embed = discord.Embed(
+            title="📋 قائمة الفرق",
+            description=f"عرض عدد الأعضاء بكل فريق",
+            color=EMBED_COLOR
+        )
+        
+        # Iterate through teams
+        for team in teams:
+            # Get team role
+            role = interaction.guild.get_role(team["role_id"])
+            role_name = role.name if role else team["name"]
+            role_mention = role.mention if role else team["name"]
             
-            # Create embed response
-            team_emoji = team["emoji"] if team["emoji"] else "⚽"
-            embed = discord.Embed(
-                title=f"{team_emoji} روستر فريق {team['name']}",
-                description=f"عدد اللاعبين: {len(players)}/{roster_cap}",
-                color=EMBED_COLOR
-            )
+            # Count members with this role
+            role_members_count = len(role.members) if role else 0
             
             # Get captain info
             captain_name = "غير معين"
             if team["captain_id"]:
                 captain = interaction.guild.get_member(team["captain_id"])
                 if captain:
-                    captain_name = captain.display_name
+                    captain_name = captain.mention
             
-            embed.add_field(name="🎖️ الكابتن", value=captain_name, inline=False)
-        
-        # If no team specified, show all teams
-        else:
-            # Get all teams
-            teams = db.get_all_teams(interaction.guild.id)
+            # Get team emoji
+            team_emoji = team["emoji"] if team["emoji"] else "⚽"
             
-            if not teams:
-                await interaction.response.send_message("لا توجد فرق مسجلة في هذا السيرفر.", ephemeral=True)
-                return
-                
-            # Create embed response
-            embed = discord.Embed(
-                title="📋 قائمة الفرق",
-                description=f"عرض عدد الأعضاء بكل فريق",
-                color=EMBED_COLOR
+            # Get registered players count 
+            players = db.get_team_players(interaction.guild.id, team["id"])
+            player_count = len(players)
+            
+            # Add team field
+            embed.add_field(
+                name=f"{team_emoji} {role_name}",
+                value=f"👥 عدد الأعضاء: **{role_members_count}**/{roster_cap}",
+                inline=True
             )
-            
-            # Iterate through teams
-            for team in teams:
-                # Get team role
-                role = interaction.guild.get_role(team["role_id"])
-                role_name = role.name if role else team["name"]
-                role_mention = role.mention if role else team["name"]
-                
-                # Count members with this role
-                role_members_count = len(role.members) if role else 0
-                
-                # Get captain info
-                captain_name = "غير معين"
-                if team["captain_id"]:
-                    captain = interaction.guild.get_member(team["captain_id"])
-                    if captain:
-                        captain_name = captain.mention
-                
-                # Get team emoji
-                team_emoji = team["emoji"] if team["emoji"] else "⚽"
-                
-                # Get registered players count 
-                players = db.get_team_players(interaction.guild.id, team["id"])
-                player_count = len(players)
-                
-                # Count players by role
-                captain_count = 0
-                vice_captain_count = 0
-                normal_player_count = 0
-                
-                for player_data in players:
-                    position = player_data["position"] or ""
-                    if position == "cap":
-                        captain_count += 1
-                    elif position == "vc":
-                        vice_captain_count += 1
-                    else:
-                        normal_player_count += 1
-                
-                # Add team field
-                embed.add_field(
-                    name=f"{team_emoji} {role_name}",
-                    value=f"👥 عدد الأعضاء: **{role_members_count}**",
-                    inline=True
-                )
         
-        # Add detailed player information only if a specific team is requested
-        if team_name:
-            # Group players by position
-            positions = {
-                "cf": [],
-                "rw": [],
-                "lw": [],
-                "cm": [],
-                "gk": [],
-                "": []
-            }
-            
-            for player_data in players:
-                # Skip captain as they're already listed
-                if player_data["user_id"] == team["captain_id"]:
-                    continue
-                    
-                player = interaction.guild.get_member(player_data["user_id"])
-                if not player:
-                    continue
-                    
-                position = player_data["position"] or ""
-                if position not in positions:
-                    positions[""] += [player_data]
-                else:
-                    positions[position] += [player_data]
-            
-            # Add position fields
-            position_names = {
-                "cf": "⚔️ المهاجمين (CF)",
-                "rw": "🏹 الجناح الأيمن (RW)",
-                "lw": "🏹 الجناح الأيسر (LW)",
-                "cm": "🛡️ لاعبي الوسط (CM)",
-                "gk": "🧤 حراس المرمى (GK)",
-                "": "🔍 غير معين"
-            }
-            
-            for position, players_list in positions.items():
-                if not players_list:
-                    continue
-                    
-                player_text = ""
-                for player_data in players_list:
-                    player = interaction.guild.get_member(player_data["user_id"])
-                    if player:
-                        stats = f"⚽ {player_data['goals']} | 👟 {player_data['assists']}"
-                        if position == "gk":
-                            stats = f"🧤 {player_data['saves']}"
-                        player_text += f"{player.mention} - {stats}\n"
-                
-                if player_text:
-                    embed.add_field(
-                        name=position_names[position],
-                        value=player_text,
-                        inline=False
-                    )
-            
-            if not any(len(p) > 0 for p in positions.values()):
-                embed.add_field(name="📝 ملاحظة", value="لا يوجد لاعبين في هذا الفريق حاليًا", inline=False)
-            
         # Add thumbnail
         embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
         
         # Add footer with help text
-        if team_name:
-            embed.set_footer(text="استخدم أمر /روستر بدون اسم فريق لعرض جميع الفرق")
-        else:
-            embed.set_footer(text="استخدم أمر /روستر متبوعًا باسم الفريق لعرض تفاصيل الفريق المحدد")
-            
+        embed.set_footer(text="يمكنك استخدام أمر !روستر لعرض التفاصيل")
+        
         await interaction.response.send_message(embed=embed)
     
     @app_commands.command(name="اعدادات", description="ضبط إعدادات السيرفر")
@@ -569,9 +558,9 @@ class Teams(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
         
-    @app_commands.command(name="اضافة_روم_تعاقدات", description="تحديد قناة عروض التعاقدات مع اللاعبين")
+    @app_commands.command(name="اضافة_روم_الانتقالات", description="تحديد قناة عروض التعاقدات مع اللاعبين")
     @app_commands.describe(
-        channel="قناة عروض التعاقدات"
+        channel="قناة عروض التعاقدات والانتقالات"
     )
     async def set_contract_channel(
         self, 
@@ -772,10 +761,9 @@ class Teams(commands.Cog):
         interaction: discord.Interaction, 
         player: discord.Member
     ):
-        # Check if user is a team captain or vice-captain
-        is_authorized = is_captain_or_vice_captain(interaction, interaction.user.id)
-        if not is_authorized:
-            await interaction.response.send_message("هذا الأمر مقيد للكابتن أو نائب الكابتن فقط.", ephemeral=True)
+        # التحقق من أن المستخدم لديه صلاحية استخدام هذا الأمر
+        if not is_captain_or_vice_captain(interaction, interaction.user.id) and interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("هذا الأمر مقيد للمسؤولين وقادة الفرق فقط.", ephemeral=True)
             return
         
         # Get the team (for captains or admin)
@@ -811,13 +799,25 @@ class Teams(commands.Cog):
         settings = db.get_guild_settings(interaction.guild.id)
         roster_cap = settings["roster_cap"]
         
-        team_players = db.get_team_players(interaction.guild.id, team["id"])
-        if len(team_players) >= roster_cap:
-            await interaction.response.send_message(
-                f"لقد وصلت إلى الحد الأقصى من اللاعبين ({roster_cap}).",
-                ephemeral=True
-            )
-            return
+        # Check using role members count instead of database entries
+        team_role = interaction.guild.get_role(team["role_id"])
+        if team_role:
+            role_members_count = len(team_role.members)
+            if role_members_count >= roster_cap:
+                await interaction.response.send_message(
+                    f"لقد وصلت إلى الحد الأقصى من اللاعبين ({role_members_count}/{roster_cap}).",
+                    ephemeral=True
+                )
+                return
+        else:
+            # Fallback to database check if role not found
+            team_players = db.get_team_players(interaction.guild.id, team["id"])
+            if len(team_players) >= roster_cap:
+                await interaction.response.send_message(
+                    f"لقد وصلت إلى الحد الأقصى من اللاعبين ({roster_cap}).",
+                    ephemeral=True
+                )
+                return
             
         # Check player price and team captain's balance
         player_price = 0
@@ -921,10 +921,9 @@ class Teams(commands.Cog):
     @app_commands.command(name="فسخ_تعاقد", description="إنهاء تعاقد لاعب من الفريق")
     @app_commands.describe(player="اللاعب الذي تريد إنهاء تعاقده")
     async def release_player(self, interaction: discord.Interaction, player: discord.Member):
-        # Check if user is a team captain or vice-captain
-        is_authorized = is_captain_or_vice_captain(interaction, interaction.user.id)
-        if not is_authorized:
-            await interaction.response.send_message("هذا الأمر مقيد للكابتن أو نائب الكابتن فقط.", ephemeral=True)
+        # التحقق من أن المستخدم لديه صلاحية استخدام هذا الأمر
+        if not is_captain_or_vice_captain(interaction, interaction.user.id) and interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("هذا الأمر مقيد للمسؤولين وقادة الفرق فقط.", ephemeral=True)
             return
         
         # Get the team (for captains or admin)
@@ -1043,6 +1042,16 @@ class Teams(commands.Cog):
         amount="المبلغ المعروض (بلو باك)"
     )
     async def make_offer(self, interaction: discord.Interaction, player: discord.Member, amount: int):
+        # التحقق من أن المستخدم لديه صلاحية استخدام هذا الأمر
+        if not is_captain_or_vice_captain(interaction, interaction.user.id) and interaction.user.id != ADMIN_USER_ID:
+            await interaction.response.send_message("هذا الأمر مقيد للمسؤولين وقادة الفرق فقط.", ephemeral=True)
+            return
+        # التحقق من وجود قناة للتعاقدات
+        settings = db.get_guild_settings(interaction.guild.id)
+        if not settings.get("contract_channel_id"):
+            await interaction.response.send_message("لم يتم تعيين قناة للتعاقدات. يرجى استخدام أمر /اضافة_روم_الانتقالات أولاً.", ephemeral=True)
+            return
+            
         # تحقق مما إذا كان المستخدم كابتن أو نائب كابتن
         is_authorized = is_captain_or_vice_captain(interaction, interaction.user.id)
         if not is_authorized:
@@ -1215,6 +1224,42 @@ class Teams(commands.Cog):
                 if role:
                     await player.add_roles(role)
                 
+                # إرسال رسالة للاعب لتأكيد قبول العرض
+                try:
+                    from_captain = button_interaction.guild.get_member(offer["from_captain_id"])
+                    captain_name = from_captain.display_name if from_captain else "الكابتن"
+                    team_emoji = team["emoji"] if team["emoji"] else "⚽"
+                    
+                    player_embed = discord.Embed(
+                        title="✅ تم قبول عرض الانتقال",
+                        description=f"تم الموافقة على انتقالك إلى فريق **{team['name']}** {team_emoji}",
+                        color=SUCCESS_COLOR
+                    )
+                    
+                    player_embed.add_field(
+                        name="كابتن الفريق الجديد",
+                        value=f"{from_captain.mention} • {captain_name}",
+                        inline=False
+                    )
+                    
+                    player_embed.add_field(
+                        name="مبلغ الصفقة",
+                        value=f"{offer['amount']:,} بلو باك",
+                        inline=False
+                    )
+                    
+                    player_embed.add_field(
+                        name="💰 حصتك من الصفقة",
+                        value=f"{offer['amount'] - player_price:,} بلو باك",
+                        inline=False
+                    )
+                    
+                    player_embed.set_footer(text="بالتوفيق في فريقك الجديد! 🌟")
+                    
+                    await player.send(embed=player_embed)
+                except Exception as e:
+                    logger.error(f"خطأ في إرسال إشعار قبول العرض للاعب: {e}")
+                
                 # إنشاء رسالة تأكيد
                 team_emoji = team["emoji"] if team["emoji"] else "⚽"
                 embed = discord.Embed(
@@ -1264,36 +1309,55 @@ class Teams(commands.Cog):
                     
                     notification_channel = self.bot.get_channel(contract_channel_id)
                     if notification_channel:
-                        # إنشاء إمبد للنشر في قناة الإشعارات
+                        # إنشاء إمبد للنشر في قناة الإشعارات أو تأثير متحرك
                         from_captain = button_interaction.guild.get_member(offer["from_captain_id"])
-                        notification_embed = discord.Embed(
-                            title=f"🔄 {team['name']} {team_emoji}",
-                            description=f"The 🎖️ <@{team['captain_id'] or offer['from_captain_id']}> • {from_captain.display_name} have **signed** <@{player.id}>",
-                            color=discord.Color.from_rgb(51, 102, 153)  # لون أزرق غامق
-                        )
                         
-                        # إضافة معلومات الكابتن والروستر
-                        players = db.get_team_players(button_interaction.guild.id, team["id"])
-                        notification_embed.add_field(
-                            name="Coach:",
-                            value=f"CN <@{team['captain_id'] or offer['from_captain_id']}> 🔵 {from_captain.display_name}",
-                            inline=False
-                        )
-                        notification_embed.add_field(
-                            name="Transfer fee:",
-                            value=f"{offer['amount']:,} Blue bucks",
-                            inline=False
-                        )
-                        notification_embed.add_field(
-                            name="Roster:",
-                            value=f"{len(players)}/22",
-                            inline=False
-                        )
-                        
-                        # إضافة شعار الفريق كصورة مصغرة
-                        notification_embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
-                        
-                        await notification_channel.send(embed=notification_embed)
+                        # محاولة إظهار الانتقال بشكل متحرك إذا كانت التأثيرات المتحركة متاحة
+                        animation_success = False
+                        try:
+                            if self.animator:
+                                # عرض الانتقال بتأثير متحرك
+                                animation_success = await self.show_animated_transfer(
+                                    channel=notification_channel,
+                                    player=player,
+                                    from_team=player_old_team,
+                                    to_team=team,
+                                    amount=offer['amount']
+                                )
+                        except Exception as anim_error:
+                            logger.error(f"خطأ في عرض التأثير المتحرك للانتقال: {anim_error}")
+                            animation_success = False
+                            
+                        # إذا فشل عرض التأثير المتحرك، نعرض إشعار عادي
+                        if not animation_success:
+                            notification_embed = discord.Embed(
+                                title=f"🔄 {team['name']} {team_emoji}",
+                                description=f"The 🎖️ <@{team['captain_id'] or offer['from_captain_id']}> • {from_captain.display_name} have **signed** <@{player.id}>",
+                                color=discord.Color.from_rgb(51, 102, 153)  # لون أزرق غامق
+                            )
+                            
+                            # إضافة معلومات الكابتن والروستر
+                            players = db.get_team_players(button_interaction.guild.id, team["id"])
+                            notification_embed.add_field(
+                                name="Coach:",
+                                value=f"CN <@{team['captain_id'] or offer['from_captain_id']}> 🔵 {from_captain.display_name}",
+                                inline=False
+                            )
+                            notification_embed.add_field(
+                                name="Transfer fee:",
+                                value=f"{offer['amount']:,} Blue bucks",
+                                inline=False
+                            )
+                            notification_embed.add_field(
+                                name="Roster:",
+                                value=f"{len(players)}/22",
+                                inline=False
+                            )
+                            
+                            # إضافة شعار الفريق كصورة مصغرة
+                            notification_embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
+                            
+                            await notification_channel.send(embed=notification_embed)
                 except Exception as e:
                     logger.error(f"خطأ في إرسال إشعار قبول العرض للقناة المخصصة: {e}")
                 
@@ -1322,6 +1386,37 @@ class Teams(commands.Cog):
                 # الحصول على معلومات الفريق
                 team = db.get_team(button_interaction.guild.id, team_id=offer["team_id"])
                 
+                # إرسال رسالة للاعب لتأكيد رفض العرض (إذا كان الكابتن هو من رفض)
+                if button_interaction.user.id == offer["from_captain_id"]:
+                    try:
+                        the_player = button_interaction.guild.get_member(player.id)
+                        team_emoji = team["emoji"] if team["emoji"] else "⚽"
+                        
+                        player_embed = discord.Embed(
+                            title="❌ تم إلغاء عرض الانتقال",
+                            description=f"تم إلغاء عرض انتقالك إلى فريق **{team['name']}** {team_emoji} من قبل الكابتن",
+                            color=discord.Color.red()
+                        )
+                        
+                        from_captain = button_interaction.guild.get_member(offer["from_captain_id"])
+                        captain_name = from_captain.display_name if from_captain else "الكابتن"
+                        
+                        player_embed.add_field(
+                            name="كابتن الفريق",
+                            value=f"{from_captain.mention} • {captain_name}",
+                            inline=False
+                        )
+                        
+                        player_embed.add_field(
+                            name="مبلغ العرض",
+                            value=f"{offer['amount']:,} بلو باك",
+                            inline=False
+                        )
+                        
+                        await the_player.send(embed=player_embed)
+                    except Exception as e:
+                        logger.error(f"خطأ في إرسال إشعار إلغاء العرض للاعب: {e}")
+                        
                 # إنشاء رسالة تأكيد
                 team_emoji = team["emoji"] if team["emoji"] else "⚽"
                 
@@ -1557,6 +1652,38 @@ class Teams(commands.Cog):
         
         # استدعاء الأمر الأصلي
         await self.show_settings(fake_interaction)
+        
+    # This method gets called after the cog is loaded and will be used
+    # to initialize the animator from the animations cog
+    def initialize_animator(self, animations_cog):
+        if animations_cog:
+            self.animator = animations_cog.logo_animator
+            return True
+        return False
+
+    # Helper method to display animated player transfer
+    async def show_animated_transfer(self, channel, player, from_team, to_team, amount=0):
+        """عرض انتقال اللاعب بين الفرق بشكل متحرك"""
+        if not self.animator:
+            return False
+        
+        # الحصول على صورة اللاعب
+        player_avatar = player.display_avatar.url
+        
+        # الحصول على شعارات الفرق (استخدام شعار افتراضي إذا كان غير متوفر)
+        team_logo = "https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+        
+        await self.animator.animate_player_transfer(
+            channel=channel,
+            player_name=player.display_name,
+            player_avatar=player_avatar,
+            from_team=from_team["name"] if from_team else "بدون فريق",
+            to_team=to_team["name"],
+            from_logo=team_logo,
+            to_logo=team_logo,
+            transfer_fee=amount
+        )
+        return True
 
 async def setup(bot):
     await bot.add_cog(Teams(bot))
