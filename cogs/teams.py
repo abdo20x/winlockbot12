@@ -303,14 +303,6 @@ class Teams(commands.Cog):
             
         # Remove team from database
         if db.remove_team(interaction.guild.id, team["id"]):
-            # Delete team role
-            try:
-                role = interaction.guild.get_role(team["role_id"])
-                if role:
-                    await role.delete()
-            except Exception as e:
-                logger.error(f"خطأ في حذف رتبة الفريق: {e}")
-                
             # Create embed response
             embed = discord.Embed(
                 title="✅ تم حذف الفريق",
