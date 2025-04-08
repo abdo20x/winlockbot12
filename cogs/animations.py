@@ -124,7 +124,15 @@ class TeamLogoAnimator:
                     inline=field.get('inline', True)
                 )
                 
-        final_embed.set_footer(text=f"فريق {team_name}")
+        # إضافة شعار النادي (Blue Lock Rivals)
+        final_embed.set_author(
+            name="Blue Lock Rivals - Team Logo",
+            icon_url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+        )
+        final_embed.set_footer(
+            text=f"Blue Lock Rivals Team Management - {team_name}",
+            icon_url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+        )
         await message.edit(embed=final_embed)
         return message
     
@@ -253,7 +261,15 @@ class TeamLogoAnimator:
                 inline=False
             )
         
-        final_embed.set_footer(text=f"تم الانتقال بنجاح! 🎉")
+        # إضافة شعار النادي (Blue Lock Rivals)
+        final_embed.set_author(
+            name="Blue Lock Rivals - Transfer News",
+            icon_url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+        )
+        final_embed.set_footer(
+            text="Blue Lock Rivals Transfer System - تم الانتقال بنجاح! 🎉",
+            icon_url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+        )
         await message.edit(embed=final_embed)
         return message
 

@@ -1357,6 +1357,16 @@ class Teams(commands.Cog):
                             # إضافة شعار الفريق كصورة مصغرة
                             notification_embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
                             
+                            # إضافة شعار النادي (Blue Lock Rivals)
+                            notification_embed.set_author(
+                                name="Blue Lock Rivals - Transfer News",
+                                icon_url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+                            )
+                            notification_embed.set_footer(
+                                text="Blue Lock Rivals Transfer System",
+                                icon_url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+                            )
+                            
                             await notification_channel.send(embed=notification_embed)
                 except Exception as e:
                     logger.error(f"خطأ في إرسال إشعار قبول العرض للقناة المخصصة: {e}")
@@ -1413,6 +1423,19 @@ class Teams(commands.Cog):
                             inline=False
                         )
                         
+                        # إضافة شعار الفريق كصورة مصغرة
+                        player_embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
+                        
+                        # إضافة شعار النادي (Blue Lock Rivals)
+                        player_embed.set_author(
+                            name="Blue Lock Rivals - Transfer Cancelled",
+                            icon_url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+                        )
+                        player_embed.set_footer(
+                            text="Blue Lock Rivals Transfer System",
+                            icon_url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+                        )
+                        
                         await the_player.send(embed=player_embed)
                     except Exception as e:
                         logger.error(f"خطأ في إرسال إشعار إلغاء العرض للاعب: {e}")
@@ -1467,6 +1490,16 @@ class Teams(commands.Cog):
                         # إضافة شعار الفريق كصورة مصغرة
                         notification_embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
                         
+                        # إضافة شعار النادي (Blue Lock Rivals)
+                        notification_embed.set_author(
+                            name="Blue Lock Rivals - Transfer News",
+                            icon_url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+                        )
+                        notification_embed.set_footer(
+                            text="Blue Lock Rivals Transfer System",
+                            icon_url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+                        )
+                        
                         await notification_channel.send(embed=notification_embed)
                 except Exception as e:
                     logger.error(f"خطأ في إرسال إشعار رفض العرض للقناة المخصصة: {e}")
@@ -1496,8 +1529,17 @@ class Teams(commands.Cog):
                       f"سيحصل فريقك الحالي على **{player_price:,}** بلو باك من قيمة الصفقة",
                 inline=False
             )
+            
+        # إضافة شعار الفريق كصورة مصغرة
+        embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
         
-        embed.set_footer(text="يرجى قبول أو رفض العرض باستخدام الأزرار أدناه")
+        # إضافة شعار النادي (Blue Lock Rivals)
+        embed.set_author(
+            name="Blue Lock Rivals - Transfer Offer",
+            icon_url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+        )
+        
+        embed.set_footer(text="يرجى قبول أو رفض العرض باستخدام الأزرار أدناه • Blue Lock Rivals Transfer System")
         
         # إرسال العرض إلى اللاعب
         view = OfferView(self.bot, offer_id)
@@ -1527,6 +1569,20 @@ class Teams(commands.Cog):
                             color=EMBED_COLOR
                         )
                         offer_embed.add_field(name="قيمة العرض", value=f"{amount:,} بلو باك", inline=True)
+                        
+                        # إضافة شعار الفريق كصورة مصغرة
+                        offer_embed.set_thumbnail(url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless")
+                        
+                        # إضافة شعار النادي (Blue Lock Rivals)
+                        offer_embed.set_author(
+                            name="Blue Lock Rivals - Transfer Offer",
+                            icon_url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+                        )
+                        offer_embed.set_footer(
+                            text="Blue Lock Rivals Transfer System",
+                            icon_url="https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+                        )
+                        
                         await contract_channel.send(embed=offer_embed)
                 except Exception as e:
                     logger.error(f"خطأ في إرسال العرض إلى قناة التعاقدات: {e}")
