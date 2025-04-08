@@ -64,6 +64,14 @@ def create_tables():
         # إذا لم يكن العمود موجوداً، قم بإضافته
         logger.info("إضافة عمود price إلى جدول players")
         cursor.execute("ALTER TABLE players ADD COLUMN price INTEGER DEFAULT 0")
+        
+    # تحقق من وجود عمود captain_role_id في جدول teams
+    try:
+        cursor.execute("SELECT captain_role_id FROM teams LIMIT 1")
+    except sqlite3.OperationalError:
+        # إذا لم يكن العمود موجوداً، قم بإضافته
+        logger.info("إضافة عمود captain_role_id إلى جدول teams")
+        cursor.execute("ALTER TABLE teams ADD COLUMN captain_role_id INTEGER DEFAULT NULL")
     
     # Create daily rewards table
     cursor.execute('''
