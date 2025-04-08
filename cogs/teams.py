@@ -352,6 +352,9 @@ class Teams(commands.Cog):
         # إذا لم يتم توفير رابط للشعار، نستخدم الشعار الافتراضي
         if not logo_url:
             logo_url = "https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+        else:
+            # تحديث شعار الفريق في قاعدة البيانات
+            db.update_team_logo(interaction.guild.id, team["id"], logo_url)
             
         # الحصول على معلومات الفريق
         team_emoji = team["emoji"] if team["emoji"] else "⚽"
@@ -1190,11 +1193,7 @@ class Teams(commands.Cog):
                         except Exception as e:
                             logger.error(f"خطأ في إرسال إشعار لكابتن الفريق السابق: {e}")
                     
-                    # إزالة اللاعب من فريقه القديم
-                    if player_old_team and player_old_team["role_id"]:
-                        old_role = button_interaction.guild.get_role(player_old_team["role_id"])
-                        if old_role and old_role in player.roles:
-                            await player.remove_roles(old_role)
+                    # تم إلغاء هذا الجزء - لا نقوم بإزالة رتبة الفريق السابق تلقائيًا
                 
                 # تقسيم المبلغ: جزء للاعب وجزء للفريق السابق إذا كان في فريق
                 player_amount = offer["amount"] - player_price
@@ -1211,10 +1210,7 @@ class Teams(commands.Cog):
                 # إضافة اللاعب إلى الفريق الجديد
                 db.add_player_to_team(button_interaction.guild.id, player.id, team["id"], "player")
                 
-                # إضافة رتبة الفريق للاعب
-                role = button_interaction.guild.get_role(team["role_id"])
-                if role:
-                    await player.add_roles(role)
+                # تم إلغاء هذا الجزء - لا نقوم بإضافة رتبة الفريق تلقائيًا
                 
                 # إرسال رسالة للاعب لتأكيد قبول العرض
                 try:
@@ -1718,8 +1714,18 @@ class Teams(commands.Cog):
         # الحصول على صورة اللاعب
         player_avatar = player.display_avatar.url
         
-        # الحصول على شعارات الفرق (استخدام شعار افتراضي إذا كان غير متوفر)
-        team_logo = "https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+        # الحصول على شعار افتراضي للفرق في حالة عدم توفر شعار
+        default_team_logo = "https://cdn.discordapp.com/emojis/1116216403602010112.webp?size=96&quality=lossless"
+        
+        # الحصول على شعار الفريق السابق (إن وجد)
+        from_logo = default_team_logo
+        if from_team and "logo_url" in from_team and from_team["logo_url"]:
+            from_logo = from_team["logo_url"]
+            
+        # الحصول على شعار الفريق الجديد
+        to_logo = default_team_logo
+        if "logo_url" in to_team and to_team["logo_url"]:
+            to_logo = to_team["logo_url"]
         
         await self.animator.animate_player_transfer(
             channel=channel,
@@ -1727,8 +1733,8 @@ class Teams(commands.Cog):
             player_avatar=player_avatar,
             from_team=from_team["name"] if from_team else "بدون فريق",
             to_team=to_team["name"],
-            from_logo=team_logo,
-            to_logo=team_logo,
+            from_logo=from_logo,
+            to_logo=to_logo,
             transfer_fee=amount
         )
         return True

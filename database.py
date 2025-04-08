@@ -37,6 +37,7 @@ def create_tables():
         emoji TEXT,
         captain_id INTEGER,
         captain_role_id INTEGER,
+        logo_url TEXT,
         UNIQUE(guild_id, name)
     )
     ''')
@@ -72,6 +73,14 @@ def create_tables():
         # إذا لم يكن العمود موجوداً، قم بإضافته
         logger.info("إضافة عمود captain_role_id إلى جدول teams")
         cursor.execute("ALTER TABLE teams ADD COLUMN captain_role_id INTEGER DEFAULT NULL")
+        
+    # تحقق من وجود عمود logo_url في جدول teams
+    try:
+        cursor.execute("SELECT logo_url FROM teams LIMIT 1")
+    except sqlite3.OperationalError:
+        # إذا لم يكن العمود موجوداً، قم بإضافته
+        logger.info("إضافة عمود logo_url إلى جدول teams")
+        cursor.execute("ALTER TABLE teams ADD COLUMN logo_url TEXT DEFAULT NULL")
     
     # Create daily rewards table
     cursor.execute('''
@@ -535,6 +544,22 @@ def update_captain_role(guild_id, team_id, captain_role_id):
     cursor.execute(
         "UPDATE teams SET captain_role_id = ? WHERE id = ? AND guild_id = ?",
         (captain_role_id, team_id, guild_id)
+    )
+    
+    conn.commit()
+    rows_affected = cursor.rowcount
+    conn.close()
+    
+    return rows_affected > 0
+    
+def update_team_logo(guild_id, team_id, logo_url):
+    """Update the logo URL for a team"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        "UPDATE teams SET logo_url = ? WHERE id = ? AND guild_id = ?",
+        (logo_url, team_id, guild_id)
     )
     
     conn.commit()
