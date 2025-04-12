@@ -5,10 +5,10 @@ channel = "stable-24_05"
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
+run = ["sh", "-c", "gunicorn --bind 0.0.0.0:5000 main:app"]
 
 [workflows]
-runButton = "Project"
+runButton = "Start Bot"
 
 [[workflows.workflow]]
 name = "Project"
@@ -51,6 +51,15 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python main.py"
+
+[[workflows.workflow]]
+name = "Start Bot"
+author = 40944877
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "gunicorn --bind 0.0.0.0:5000 --reuse-port --reload \"main:app\" & FLASK_SERVER_ONLY=0 python main.py"
 
 [[ports]]
 localPort = 5000
