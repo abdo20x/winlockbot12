@@ -59,7 +59,7 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "gunicorn --bind 0.0.0.0:5000 --reuse-port --reload \"main:app\" & FLASK_SERVER_ONLY=0 python main.py"
+args = "gunicorn --bind 0.0.0.0:5000 main:app"
 
 [[ports]]
 localPort = 5000

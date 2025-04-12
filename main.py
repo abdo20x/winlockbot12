@@ -283,15 +283,19 @@ if __name__ == "__main__":
         logger.critical("لم يتم العثور على رمز البوت (DISCORD_TOKEN). يرجى التحقق من ملف .env")
         exit(1)
     
-    if os.environ.get('FLASK_SERVER_ONLY', '0') == '1':
-        # Run only Flask server for the web interface
-        run_flask_server()
-    else:
-        # Run both Flask and Discord bot
-        flask_thread = threading.Thread(target=run_flask_server)
-        flask_thread.daemon = True
-        flask_thread.start()
-        logger.info("بدأ خادم Flask للحفاظ على نشاط البوت 24/7")
-        
-        # Run the bot with retry logic
-        asyncio.run(start_bot())
+    try:
+        if os.environ.get('FLASK_SERVER_ONLY', '0') == '1':
+            # Run only Flask server for the web interface
+            run_flask_server()
+        else:
+            # Run both Flask and Discord bot
+            flask_thread = threading.Thread(target=run_flask_server)
+            flask_thread.daemon = True
+            flask_thread.start()
+            logger.info("بدأ خادم Flask للحفاظ على نشاط البوت 24/7")
+            
+            # Run the bot with retry logic
+            asyncio.run(start_bot())
+    except Exception as e:
+        logger.error(f"Error starting services: {e}")
+        exit(1)
