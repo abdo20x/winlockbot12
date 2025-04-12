@@ -284,18 +284,21 @@ if __name__ == "__main__":
         exit(1)
     
     try:
-        if os.environ.get('FLASK_SERVER_ONLY', '0') == '1':
-            # Run only Flask server for the web interface
-            run_flask_server()
-        else:
-            # Run both Flask and Discord bot
-            flask_thread = threading.Thread(target=run_flask_server)
-            flask_thread.daemon = True
-            flask_thread.start()
-            logger.info("بدأ خادم Flask للحفاظ على نشاط البوت 24/7")
-            
-            # Run the bot with retry logic
+        # Always start Flask in a separate thread
+        flask_thread = threading.Thread(target=run_flask_server)
+        flask_thread.daemon = True
+        flask_thread.start()
+        logger.info("بدأ خادم Flask للحفاظ على نشاط البوت 24/7")
+        
+        # Run the Discord bot with retry logic
+        if os.environ.get('FLASK_SERVER_ONLY', '0') != '1':
             asyncio.run(start_bot())
+        else:
+            # Keep main thread alive for Flask
+            while True:
+                time.sleep(60)
+    except KeyboardInterrupt:
+        logger.info("Shutting down gracefully...")
     except Exception as e:
         logger.error(f"Error starting services: {e}")
-        exit(1)
+        raise
